@@ -170,8 +170,9 @@ export async function getGuild(guildId) {
     ['welcome', 'Bienvenue {user} sur {server} !'],
     ['leave', '{username} a quitté {server}.'],
   ]) {
+    const pingDefault = key === 'welcome';
     if (!settings[key] || typeof settings[key] !== 'object' || Array.isArray(settings[key])) {
-      settings[key] = { enabled: false, channelId: null, message: defaultMessage, imagePath: null };
+      settings[key] = { enabled: false, channelId: null, message: defaultMessage, imagePath: null, ping: pingDefault };
       changed = true;
       continue;
     }
@@ -180,6 +181,7 @@ export async function getGuild(guildId) {
       channelId: null,
       message: defaultMessage,
       imagePath: null,
+      ping: pingDefault,
     })) {
       if (!Object.hasOwn(settings[key], option)) {
         settings[key][option] = value;

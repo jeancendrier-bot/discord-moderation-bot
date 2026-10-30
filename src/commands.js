@@ -1,8 +1,36 @@
-import { ChannelType, EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  ChannelSelectMenuBuilder,
+  EmbedBuilder,
+  ModalBuilder,
+  PermissionFlagsBits,
+  RoleSelectMenuBuilder,
+  SlashCommandBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+} from 'discord.js';
+import { entersState, joinVoiceChannel, VoiceConnectionStatus, getVoiceConnection } from '@discordjs/voice';
 import { getGuild, removeMemberEventImage, save, saveMemberEventImage } from './store.js';
 
 const reason = (o) => o.setName('reason').setDescription('Motif communiqué au membre et consigné dans le journal').setMaxLength(400);
 const user = (o) => o.setName('user').setDescription('Membre visé par cette action').setRequired(true);
+const announcementConfiguration = (option, event) => {
+  const isWelcome = event === 'welcome';
+  const command = option
+    .setName(isWelcome ? 'bienvenue' : 'depart')
+    .setDescription(isWelcome ? 'Configurer l’annonce d’arrivée des membres' : 'Configurer l’annonce de départ des membres')
+    .addBooleanOption((o) => o.setName('actif').setDescription('Activer ou désactiver cette annonce').setRequired(true))
+    .addChannelOption((o) => o.setName('salon').setDescription('Salon où publier l’annonce').addChannelTypes(ChannelType.GuildText).setRequired(true))
+    .addStringOption((o) => o.setName('texte').setDescription('Texte avec {user}, {username}, {server} ou {memberCount}').setMaxLength(1000))
+    .addAttachmentOption((o) => o.setName('image').setDescription('Image PNG, JPEG, GIF ou WebP de 8 Mo maximum'))
+    .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée actuelle'));
+  if (isWelcome) command.addBooleanOption((o) => o.setName('ping').setDescription('Mentionner le nouvel arrivant'));
+  return command;
+};
 
 export const commands = [
   new SlashCommandBuilder().setName('aide').setDescription('Consulter les commandes disponibles et les permissions requises'),
@@ -29,29 +57,19 @@ export const commands = [
     .addIntegerOption((o) => o.setName('seconds').setDescription('Délai en secondes (0 à 21 600 ; 0 désactive le mode lent)').setMinValue(0).setMaxValue(21600).setRequired(true)),
   new SlashCommandBuilder().setName('lock').setDescription('Interdire temporairement aux membres d’écrire dans ce salon').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
   new SlashCommandBuilder().setName('unlock').setDescription('Rétablir le droit d’écrire dans ce salon').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+  new SlashCommandBuilder().setName('dire').setDescription('Publier un message au nom du bot dans un salon').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addStringOption((o) => o.setName('message').setDescription('Texte à publier (les mentions ne déclencheront pas de notification)').setMaxLength(1900).setRequired(true))
+    .addChannelOption((o) => o.setName('salon').setDescription('Salon de destination ; par défaut, le salon actuel').addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName('nickname').setDescription('Définir ou réinitialiser le pseudonyme d’un membre').setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
     .addUserOption(user).addStringOption((o) => o.setName('nickname').setDescription('Nouveau pseudonyme ; laisser vide pour rétablir celui d’origine').setMaxLength(32)).addStringOption(reason),
-  new SlashCommandBuilder().setName('modlog').setDescription('Définir le salon du journal de modération ou désactiver celui-ci').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addChannelOption((o) => o.setName('channel').setDescription('Salon de destination ; ne pas renseigner pour désactiver le journal').addChannelTypes(ChannelType.GuildText)),
-  new SlashCommandBuilder().setName('logs').setDescription('Configurer le journal de modération ou consulter les dernières entrées').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((o) => o.setName('salon').setDescription('Définir le salon de destination des journaux')
-      .addChannelOption((option) => option.setName('channel').setDescription('Salon où publier les journaux').addChannelTypes(ChannelType.GuildText).setRequired(true)))
+  new SlashCommandBuilder().setName('vocal').setDescription('Connecter ou déconnecter le bot d’un salon vocal').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((o) => o.setName('rejoindre').setDescription('Connecter le bot à un salon vocal')
+      .addChannelOption((option) => option.setName('salon').setDescription('Salon vocal à rejoindre').addChannelTypes(ChannelType.GuildVoice).setRequired(true)))
+    .addSubcommand((o) => o.setName('quitter').setDescription('Déconnecter le bot du salon vocal actuel')),
+  new SlashCommandBuilder().setName('logs').setDescription('Consulter les dernières entrées du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les dix dernières entrées du journal')),
-  ...[
-    ['bienvenue', 'welcome', 'Configurer l’annonce affichée lors de l’arrivée d’un membre', 'Bienvenue {user} sur {server} !'],
-    ['depart', 'leave', 'Configurer l’annonce affichée lorsqu’un membre quitte le serveur', '{username} a quitté {server}.'],
-  ].map(([commandName, event, description]) => new SlashCommandBuilder()
-    .setName(commandName)
-    .setDescription(description)
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les paramètres actuels de l’annonce'))
-    .addSubcommand((o) => o.setName('configurer').setDescription('Définir le salon, le texte et l’image de l’annonce')
-      .addBooleanOption((option) => option.setName('actif').setDescription('Activer ou désactiver cette annonce').setRequired(true))
-      .addChannelOption((option) => option.setName('salon').setDescription('Salon où publier l’annonce').addChannelTypes(ChannelType.GuildText).setRequired(true))
-      .addStringOption((option) => option.setName('texte').setDescription(`Texte de l’annonce (${event === 'welcome' ? '{user}' : '{username}'}, {server}, {memberCount})`).setMaxLength(1000))
-      .addAttachmentOption((option) => option.setName('image').setDescription('Image personnalisée (PNG, JPEG, GIF ou WebP, 8 Mo maximum)'))
-      .addBooleanOption((option) => option.setName('effacer_image').setDescription('Supprimer l’image personnalisée actuelle')))),
-  new SlashCommandBuilder().setName('config').setDescription('Gérer la langue et les protections automatiques du serveur').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  new SlashCommandBuilder()  .setName('config').setDescription('Configurer les protections, journaux, annonces et tickets du serveur').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((o) => o.setName('panneau').setDescription('Ouvrir le panneau interactif de configuration'))
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter la configuration actuelle des protections'))
     .addSubcommand((o) => o.setName('langue').setDescription('Définir la langue des notifications de sécurité')
       .addStringOption((option) => option.setName('language').setDescription('Langue utilisée pour les notifications').setRequired(true)
@@ -71,11 +89,14 @@ export const commands = [
       .addBooleanOption((option) => option.setName('actif').setDescription('Indiquer si la protection doit être active').setRequired(true))
       .addIntegerOption((option) => option.setName('seuil').setDescription('Nombre d’arrivées déclenchant la protection').setMinValue(3).setMaxValue(30).setRequired(true))
       .addIntegerOption((option) => option.setName('intervalle').setDescription('Durée de la période de détection, en secondes').setMinValue(5).setMaxValue(120).setRequired(true))
-      .addIntegerOption((option) => option.setName('duree').setDescription('Durée du niveau de vérification renforcé, en minutes').setMinValue(1).setMaxValue(60).setRequired(true))),
+      .addIntegerOption((option) => option.setName('duree').setDescription('Durée du niveau de vérification renforcé, en minutes').setMinValue(1).setMaxValue(60).setRequired(true)))
+    .addSubcommand((option) => announcementConfiguration(option, 'welcome'))
+    .addSubcommand((option) => announcementConfiguration(option, 'leave')),
   new SlashCommandBuilder().setName('ticket').setDescription('Gérer les demandes d’assistance dans des salons privés')
-    .addSubcommand((o) => o.setName('setup').setDescription('Définir la catégorie et le rôle de l’équipe de support')
-      .addChannelOption((option) => option.setName('category').setDescription('Catégorie dans laquelle créer les tickets').addChannelTypes(ChannelType.GuildCategory).setRequired(true))
-      .addRoleOption((option) => option.setName('support_role').setDescription('Rôle de l’équipe autorisé à accéder aux tickets')))
+    .addSubcommand((o) => o.setName('panel').setDescription('Publier un panneau pour ouvrir des tickets privés')
+      .addChannelOption((option) => option.setName('salon').setDescription('Salon dans lequel publier le panneau').addChannelTypes(ChannelType.GuildText).setRequired(true))
+      .addStringOption((option) => option.setName('titre').setDescription('Titre personnalisé du panneau').setMaxLength(100))
+      .addStringOption((option) => option.setName('description').setDescription('Instructions affichées au-dessus du bouton').setMaxLength(1000)))
     .addSubcommand((o) => o.setName('create').setDescription('Créer une demande privée auprès de l’équipe de support'))
     .addSubcommand((o) => o.setName('close').setDescription('Clôturer le ticket ouvert dans ce salon'))
     .addSubcommand((o) => o.setName('add').setDescription('Accorder à un membre l’accès au ticket').addUserOption(user))
@@ -122,6 +143,319 @@ function ticketOwner(channel) {
   return channel?.topic?.match(/^ticket-owner:(\d+)$/)?.[1] ?? null;
 }
 
+const ticketCreations = new Set();
+
+async function fetchTicketCategory(guild, categoryId) {
+  if (!categoryId) return null;
+  try {
+    const category = await guild.channels.fetch(categoryId);
+    return category?.type === ChannelType.GuildCategory ? category : null;
+  } catch (error) {
+    if (Number(error.code) === 10003) return null;
+    throw error;
+  }
+}
+
+function ticketPanelComponents() {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket:open')
+      .setLabel('Ouvrir un ticket')
+      .setStyle(ButtonStyle.Primary),
+  )];
+}
+
+function ticketCloseComponents(disabled = false) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket:close')
+      .setLabel('Clôturer le ticket')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled),
+  )];
+}
+
+const configSections = [
+  ['overview', 'Vue générale', 'Tous les réglages essentiels, réunis au même endroit.'],
+  ['security', 'Sécurité', 'Langue, filtre anti-liens, anti-spam et anti-raid.'],
+  ['logs', 'Journaux', 'Choisissez où publier les actions de modération.'],
+  ['welcome', 'Bienvenue', 'Réglez l’annonce envoyée lors d’une arrivée.'],
+  ['leave', 'Départ', 'Réglez l’annonce envoyée lorsqu’un membre quitte.'],
+  ['tickets', 'Tickets', 'Définissez la catégorie et le rôle du support.'],
+];
+
+const configStatus = (enabled) => enabled ? '🟢 Activé' : '⚫ Désactivé';
+const configuredChannel = (id) => id ? `<#${id}>` : '*Non configuré*';
+const configuredRole = (id) => id ? `<@&${id}>` : '*Aucun rôle*';
+
+function configPanelEmbed(settings, section = 'overview') {
+  const { security } = settings;
+  const embed = new EmbedBuilder()
+    .setTitle('Centre de configuration')
+    .setColor(0x5865f2)
+    .setDescription(`**${configSections.find(([key]) => key === section)?.[1] ?? 'Vue générale'}**\n${configSections.find(([key]) => key === section)?.[2] ?? configSections[0][2]}`)
+    .setFooter({ text: 'Configuration privée • Modifications enregistrées automatiquement' })
+    .setTimestamp();
+
+  if (section === 'overview') {
+    embed.addFields(
+      {
+        name: '🛡️ Protection du serveur',
+        value: `Langue : **${security.language === 'en' ? 'English' : 'Français'}**\nAnti-liens : ${configStatus(security.antiLink.enabled)}  •  Anti-spam : ${configStatus(security.antiSpam.enabled)}  •  Anti-raid : ${configStatus(security.antiRaid.enabled)}`,
+      },
+      { name: '📋 Journal de modération', value: configuredChannel(settings.logChannelId), inline: true },
+      { name: '👋 Annonce de bienvenue', value: `${configStatus(settings.welcome.enabled)}\n${configuredChannel(settings.welcome.channelId)}`, inline: true },
+      { name: '🚪 Annonce de départ', value: `${configStatus(settings.leave.enabled)}\n${configuredChannel(settings.leave.channelId)}`, inline: true },
+      { name: '🎫 Système de tickets', value: `Catégorie : ${configuredChannel(settings.ticketCategoryId)}\nÉquipe : ${configuredRole(settings.ticketSupportRoleId)}` },
+    );
+  } else if (section === 'security') {
+    embed.addFields(
+      { name: '🌐 Langue des notifications', value: `**${security.language === 'en' ? 'English' : 'Français'}**`, inline: true },
+      { name: '🔗 Filtre anti-liens', value: `${configStatus(security.antiLink.enabled)}\nMode : **${security.antiLink.mode === 'all' ? 'Tous les liens' : 'Invitations Discord'}**\nRôle exempté : ${configuredRole(security.antiLink.exemptRoleId)}`, inline: true },
+      { name: '💬 Protection anti-spam', value: `${configStatus(security.antiSpam.enabled)}\nSeuil : **${security.antiSpam.maxMessages} messages / ${security.antiSpam.intervalSeconds} s**\nSuspension : **${security.antiSpam.timeoutMinutes} min**`, inline: true },
+      { name: '🚨 Protection anti-raid', value: `${configStatus(security.antiRaid.enabled)}\nSeuil : **${security.antiRaid.joinThreshold} arrivées / ${security.antiRaid.intervalSeconds} s**\nProtection : **${security.antiRaid.protectionMinutes} min**`, inline: true },
+    );
+  } else if (section === 'logs') {
+    embed.addFields({ name: 'Salon de destination', value: configuredChannel(settings.logChannelId) });
+  } else if (section === 'welcome' || section === 'leave') {
+    const announcement = settings[section];
+    embed.addFields(
+      { name: 'État', value: configStatus(announcement.enabled), inline: true },
+      { name: 'Salon', value: configuredChannel(announcement.channelId), inline: true },
+      ...(section === 'welcome' ? [{ name: 'Mention du nouvel arrivant', value: announcement.ping ? '🟢 Activée' : '⚫ Désactivée', inline: true }] : []),
+      { name: 'Texte actuel', value: `> ${announcement.message.replaceAll('\n', '\n> ').slice(0, 900)}` },
+      { name: 'Image personnalisée', value: announcement.imagePath ? `🟢 Configurée (gestion via \`/config ${section === 'welcome' ? 'bienvenue' : 'depart'}\`)` : '⚫ Aucune' },
+    );
+  } else if (section === 'tickets') {
+    embed.addFields(
+      { name: 'Catégorie des tickets', value: configuredChannel(settings.ticketCategoryId), inline: true },
+      { name: 'Rôle de l’équipe support', value: configuredRole(settings.ticketSupportRoleId), inline: true },
+      { name: 'Étape suivante', value: 'Une fois la catégorie choisie, publiez le panneau avec `/ticket panel`.' },
+    );
+  }
+  return embed;
+}
+
+function configPageSelector(section) {
+  const selector = new StringSelectMenuBuilder()
+    .setCustomId('config:page')
+    .setPlaceholder('Ouvrir une rubrique de configuration')
+    .addOptions(configSections.map(([value, label, description]) => ({
+      label,
+      value,
+      description,
+      default: value === section,
+    })));
+  return new ActionRowBuilder().addComponents(selector);
+}
+
+function configButton(customId, label, style = ButtonStyle.Secondary) {
+  return new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(style);
+}
+
+function configTextChannelSelector(customId, placeholder) {
+  return new ActionRowBuilder().addComponents(
+    new ChannelSelectMenuBuilder()
+      .setCustomId(customId)
+      .setPlaceholder(placeholder)
+      .setChannelTypes(ChannelType.GuildText)
+      .setMinValues(1)
+      .setMaxValues(1),
+  );
+}
+
+function configPageComponents(section) {
+  const rows = [configPageSelector(section)];
+  if (section === 'overview') {
+    rows.push(new ActionRowBuilder().addComponents(configButton('config:refresh:overview', 'Actualiser')));
+  } else if (section === 'security') {
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton('config:language', 'Langue', ButtonStyle.Primary),
+      configButton('config:antiLink', 'Anti-liens', ButtonStyle.Primary),
+      configButton('config:antiSpam', 'Anti-spam', ButtonStyle.Primary),
+      configButton('config:antiRaid', 'Anti-raid', ButtonStyle.Primary),
+    ));
+    rows.push(new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('config:role:antiLink').setPlaceholder('Choisir le rôle exempté du filtre anti-liens').setMinValues(1).setMaxValues(1),
+    ));
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton('config:clear:antiLinkRole', 'Retirer l’exemption'),
+    ));
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton('config:refresh:security', 'Actualiser'),
+    ));
+  } else if (section === 'logs') {
+    rows.push(configTextChannelSelector('config:channel:logs', 'Choisir le salon du journal'));
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton('config:clear:logs', 'Désactiver le journal', ButtonStyle.Danger),
+      configButton('config:refresh:logs', 'Actualiser'),
+    ));
+  } else if (section === 'welcome' || section === 'leave') {
+    rows.push(configTextChannelSelector(`config:channel:${section}`, 'Choisir le salon de l’annonce'));
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton(`config:edit:${section}`, 'Modifier le texte et les options', ButtonStyle.Primary),
+      configButton(`config:refresh:${section}`, 'Actualiser'),
+    ));
+  } else if (section === 'tickets') {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ChannelSelectMenuBuilder()
+        .setCustomId('config:channel:ticketCategory')
+        .setPlaceholder('Choisir la catégorie des tickets')
+        .setChannelTypes(ChannelType.GuildCategory)
+        .setMinValues(1)
+        .setMaxValues(1),
+    ));
+    rows.push(new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('config:role:ticketSupport').setPlaceholder('Choisir le rôle de l’équipe support').setMinValues(1).setMaxValues(1),
+    ));
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton('config:clear:ticketRole', 'Retirer le rôle support'),
+      configButton('config:refresh:tickets', 'Actualiser'),
+    ));
+  }
+  return rows;
+}
+
+function configModal(customId, title, fields) {
+  const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
+  for (const field of fields) {
+    const input = new TextInputBuilder()
+      .setCustomId(field.id)
+      .setLabel(field.label)
+      .setStyle(field.long ? TextInputStyle.Paragraph : TextInputStyle.Short)
+      .setRequired(field.required ?? true)
+      .setMaxLength(field.maxLength ?? 40);
+    if (field.placeholder) input.setPlaceholder(field.placeholder);
+    if (field.value) input.setValue(String(field.value));
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+  }
+  return modal;
+}
+
+function configModalFor(settings, key) {
+  const { security } = settings;
+  if (key === 'language') {
+    return configModal('config:save:language', 'Langue des notifications', [
+      { id: 'language', label: 'Saisissez fr ou en', value: security.language, maxLength: 2 },
+    ]);
+  }
+  if (key === 'antiLink') {
+    return configModal('config:save:antiLink', 'Protection anti-liens', [
+      { id: 'enabled', label: 'Protection active ? on ou off', value: security.antiLink.enabled ? 'on' : 'off', maxLength: 3 },
+      { id: 'mode', label: 'Mode : invites ou all', value: security.antiLink.mode, maxLength: 7 },
+    ]);
+  }
+  if (key === 'antiSpam') {
+    return configModal('config:save:antiSpam', 'Protection anti-spam', [
+      { id: 'enabled', label: 'Protection active ? on ou off', value: security.antiSpam.enabled ? 'on' : 'off', maxLength: 3 },
+      { id: 'maximum', label: 'Messages avant intervention (3–15)', value: security.antiSpam.maxMessages, maxLength: 2 },
+      { id: 'interval', label: 'Fenêtre en secondes (3–60)', value: security.antiSpam.intervalSeconds, maxLength: 2 },
+      { id: 'timeout', label: 'Suspension en minutes (1–60)', value: security.antiSpam.timeoutMinutes, maxLength: 2 },
+    ]);
+  }
+  return configModal('config:save:antiRaid', 'Protection anti-raid', [
+    { id: 'enabled', label: 'Protection active ? on ou off', value: security.antiRaid.enabled ? 'on' : 'off', maxLength: 3 },
+    { id: 'threshold', label: 'Arrivées (3–30)', value: security.antiRaid.joinThreshold, maxLength: 2 },
+    { id: 'interval', label: 'Fenêtre en secondes (5–120)', value: security.antiRaid.intervalSeconds, maxLength: 3 },
+    { id: 'duration', label: 'Protection en minutes (1–60)', value: security.antiRaid.protectionMinutes, maxLength: 2 },
+  ]);
+}
+
+function announcementModal(settings, section) {
+  const announcement = settings[section];
+  const fields = [
+    { id: 'enabled', label: 'Annonce active ? on ou off', value: announcement.enabled ? 'on' : 'off', maxLength: 3 },
+    { id: 'message', label: 'Texte de l’annonce', value: announcement.message, maxLength: 1000, long: true },
+  ];
+  if (section === 'welcome') {
+    fields.push({ id: 'ping', label: 'Mentionner l’arrivant ? on ou off', value: announcement.ping ? 'on' : 'off', maxLength: 3 });
+  }
+  return configModal(`config:save:${section}`, section === 'welcome' ? 'Annonce de bienvenue' : 'Annonce de départ', fields);
+}
+
+function modalValue(interaction, id) {
+  return interaction.fields.getTextInputValue(id).trim();
+}
+
+function enabledValue(value) {
+  const normalized = value.toLowerCase();
+  if (normalized === 'on') return true;
+  if (normalized === 'off') return false;
+  return null;
+}
+
+function boundedInteger(value, minimum, maximum) {
+  if (!/^\d+$/.test(value)) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= minimum && number <= maximum ? number : null;
+}
+
+async function createTicket(guild, user, client, settings, subject, details) {
+  const creationKey = `${guild.id}:${user.id}`;
+  if (ticketCreations.has(creationKey)) return { status: 'pending' };
+  ticketCreations.add(creationKey);
+  try {
+    const existing = guild.channels.cache.find((channel) => ticketOwner(channel) === user.id);
+    if (existing) return { status: 'existing', channel: existing };
+
+    const category = await fetchTicketCategory(guild, settings.ticketCategoryId);
+    if (!category || category.type !== ChannelType.GuildCategory) return { status: 'unconfigured' };
+
+    const slug = user.username.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 70) || 'member';
+    const permissionOverwrites = [
+      { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
+      { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] },
+    ];
+    if (settings.ticketSupportRoleId) {
+      permissionOverwrites.push({
+        id: settings.ticketSupportRoleId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+      });
+    }
+
+    const channel = await guild.channels.create({
+      name: `ticket-${slug}`,
+      type: ChannelType.GuildText,
+      parent: category.id,
+      topic: `ticket-owner:${user.id}`,
+      permissionOverwrites,
+    });
+    const embed = new EmbedBuilder()
+      .setTitle(subject.slice(0, 256))
+      .setDescription(details.slice(0, 4000) || 'Aucun détail supplémentaire fourni.')
+      .setColor(0x5865f2)
+      .addFields({ name: 'Demandeur', value: `<@${user.id}>` })
+      .setTimestamp();
+    try {
+      await channel.send({
+        content: `<@${user.id}> Votre demande a été transmise à l’équipe de support.`,
+        embeds: [embed],
+        components: ticketCloseComponents(),
+        allowedMentions: { users: [user.id] },
+      });
+    } catch (error) {
+      await channel.delete('Nettoyage : impossible de publier le message initial du ticket')
+        .catch((cleanupError) => console.error('[moderation-bot] Impossible de supprimer un ticket créé sans message initial :', cleanupError.message));
+      throw error;
+    }
+    return { status: 'created', channel };
+  } finally {
+    ticketCreations.delete(creationKey);
+  }
+}
+
+async function closeTicket(channel, ownerId, supportRoleId) {
+  const participants = channel.permissionOverwrites.cache.filter((overwrite) =>
+    overwrite.id !== channel.guild.id
+    && overwrite.id !== channel.client.user.id
+    && overwrite.id !== supportRoleId,
+  );
+  await Promise.all(participants.map((overwrite) => overwrite.edit({ SendMessages: false })));
+  await channel.setTopic(`ticket-closed:${ownerId}`);
+  await channel.setName(`closed-${channel.name.replace(/^ticket-/, '').slice(0, 90)}`);
+}
+
 async function fetchMember(guild, userId) {
   try {
     return await guild.members.fetch(userId);
@@ -164,10 +498,14 @@ async function handleMemberEventSettings(interaction, settings, eventType) {
   const imagePath = attachment
     ? await saveMemberEventImage(interaction.guildId, eventType, attachment)
     : clearImage ? null : previousImage;
+  const ping = eventType === 'welcome'
+    ? interaction.options.getBoolean('ping') ?? eventSettings.ping
+    : false;
   eventSettings.enabled = interaction.options.getBoolean('actif', true);
   eventSettings.channelId = interaction.options.getChannel('salon', true).id;
   eventSettings.message = interaction.options.getString('texte') ?? eventSettings.message;
   eventSettings.imagePath = imagePath;
+  if (eventType === 'welcome') eventSettings.ping = ping;
   await save();
   if ((attachment || clearImage) && previousImage && previousImage !== imagePath) {
     await removeMemberEventImage(previousImage);
@@ -175,7 +513,7 @@ async function handleMemberEventSettings(interaction, settings, eventType) {
 
   const imageStatus = imagePath ? 'L’image personnalisée est enregistrée.' : 'Aucune image personnalisée n’est définie.';
   await interaction.editReply({
-    content: `L’annonce de ${eventName} a été ${eventSettings.enabled ? 'activée' : 'désactivée'} dans <#${eventSettings.channelId}>. ${imageStatus}`,
+    content: `L’annonce de ${eventName} a été ${eventSettings.enabled ? 'activée' : 'désactivée'} dans <#${eventSettings.channelId}>. ${imageStatus}${eventType === 'welcome' ? ` Mention du nouvel arrivant : ${ping ? 'activée' : 'désactivée'}.` : ''}`,
   });
 }
 
@@ -191,12 +529,12 @@ export async function handleCommand(interaction) {
       {
         name: 'Gestion des salons',
         permission: 'Gérer les messages, les salons, les journaux ou les pseudonymes selon la commande.',
-        commands: ['purge', 'slowmode', 'lock', 'unlock', 'nickname', 'modlog', 'logs'],
+        commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'nickname', 'logs'],
       },
       {
         name: 'Configuration et assistance',
         permission: 'Gérer le serveur pour la configuration ; les tickets dépendent de leur configuration.',
-        commands: ['config', 'ticket', 'bienvenue', 'depart'],
+        commands: ['config', 'ticket', 'vocal'],
       },
     ];
     const embed = new EmbedBuilder()
@@ -216,25 +554,59 @@ export async function handleCommand(interaction) {
   }
 
   const settings = await getGuild(interaction.guildId);
-  const why = interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
+  const getReason = () => interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
 
-  if (name === 'bienvenue' || name === 'depart') {
-    await handleMemberEventSettings(interaction, settings, name === 'bienvenue' ? 'welcome' : 'leave');
+  if (name === 'vocal') {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.reply({ content: 'La permission « Gérer le serveur » est requise pour connecter le bot à un salon vocal.', ephemeral: true });
+      return;
+    }
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'quitter') {
+      const connection = getVoiceConnection(interaction.guildId);
+      if (!connection) {
+        await interaction.reply({ content: 'Le bot n’est connecté à aucun salon vocal sur ce serveur.', ephemeral: true });
+        return;
+      }
+      connection.destroy();
+      await interaction.reply({ content: 'Le bot a quitté le salon vocal.', ephemeral: true });
+      return;
+    }
+
+    const channel = interaction.options.getChannel('salon', true);
+    if (channel.type !== ChannelType.GuildVoice) {
+      await interaction.reply({ content: 'Choisissez un salon vocal standard (les salons de scène ne sont pas pris en charge).', ephemeral: true });
+      return;
+    }
+    const botMember = interaction.guild.members.me;
+    if (!botMember || !channel.permissionsFor(botMember)?.has(PermissionFlagsBits.Connect)) {
+      await interaction.reply({ content: 'Le bot n’a pas la permission **Se connecter** dans ce salon vocal.', ephemeral: true });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    getVoiceConnection(interaction.guildId)?.destroy();
+    const connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: interaction.guildId,
+      adapterCreator: interaction.guild.voiceAdapterCreator,
+      selfDeaf: true,
+      selfMute: true,
+    });
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
+    } catch (error) {
+      connection.destroy();
+      throw error;
+    }
+    await interaction.editReply({ content: `Le bot est maintenant connecté à <#${channel.id}>. Il reste silencieux et ne diffuse pas d’audio.` });
     return;
   }
 
   if (name === 'logs') {
     const subcommand = interaction.options.getSubcommand();
-    if (subcommand === 'salon') {
-      const channel = interaction.options.getChannel('channel', true);
-      settings.logChannelId = channel.id;
-      await save();
-      await interaction.reply({ content: `Le journal de modération sera désormais publié dans <#${channel.id}>.`, ephemeral: true });
-      return;
-    }
-
     if (!settings.logChannelId) {
-      await interaction.reply({ content: 'Aucun salon de journal n’est configuré. Utilisez `/logs salon` pour en choisir un.', ephemeral: true });
+      await interaction.reply({ content: 'Aucun salon de journal n’est configuré. Choisissez-en un dans `/config panneau` > **Journaux**.', ephemeral: true });
       return;
     }
     await interaction.deferReply({ ephemeral: true });
@@ -266,9 +638,35 @@ export async function handleCommand(interaction) {
     return;
   }
 
+  if (name === 'dire') {
+    const channel = interaction.options.getChannel('salon') ?? interaction.channel;
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      await interaction.reply({ content: 'Choisissez un salon textuel dans lequel le bot peut envoyer des messages.', ephemeral: true });
+      return;
+    }
+    const message = interaction.options.getString('message', true);
+    await interaction.deferReply({ ephemeral: true });
+    await channel.send({ content: message, allowedMentions: { parse: [] } });
+    await interaction.editReply({ content: `Le message a été publié dans <#${channel.id}>. Les mentions ne génèrent aucune notification.` });
+    return;
+  }
+
   if (name === 'config') {
     const subcommand = interaction.options.getSubcommand();
     const security = settings.security;
+    if (subcommand === 'bienvenue' || subcommand === 'depart') {
+      await handleMemberEventSettings(interaction, settings, subcommand === 'bienvenue' ? 'welcome' : 'leave');
+      return;
+    }
+    if (subcommand === 'panneau') {
+      await interaction.reply({
+        embeds: [configPanelEmbed(settings)],
+        components: configPageComponents('overview'),
+        ephemeral: true,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
     if (subcommand === 'afficher') {
       const english = security.language === 'en';
       const status = (enabled) => enabled ? (english ? 'enabled' : 'activé') : (english ? 'disabled' : 'désactivé');
@@ -324,14 +722,6 @@ export async function handleCommand(interaction) {
     return;
   }
 
-  if (name === 'modlog') {
-    const channel = interaction.options.getChannel('channel');
-    settings.logChannelId = channel ? channel.id : null;
-    await save();
-    await interaction.reply({ content: channel ? `Le journal de modération sera désormais publié dans <#${channel.id}>.` : 'Le journal de modération a été désactivé.', ephemeral: true });
-    return;
-  }
-
   if (name === 'purge') {
     const amount = interaction.options.getInteger('amount');
     const from = interaction.options.getUser('from');
@@ -373,55 +763,48 @@ export async function handleCommand(interaction) {
 
   if (name === 'ticket') {
     const subcommand = interaction.options.getSubcommand();
-    if (subcommand === 'setup') {
+    if (subcommand === 'panel') {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-        await interaction.reply({ content: 'La permission « Gérer le serveur » est requise pour modifier la configuration des tickets.', ephemeral: true });
+        await interaction.reply({ content: 'La permission « Gérer le serveur » est requise pour publier un panneau de tickets.', ephemeral: true });
         return;
       }
-      settings.ticketCategoryId = interaction.options.getChannel('category', true).id;
-      settings.ticketSupportRoleId = interaction.options.getRole('support_role')?.id ?? null;
-      await save();
-      await interaction.reply({ content: 'La configuration des tickets a été enregistrée avec succès.', ephemeral: true });
+      if (!settings.ticketCategoryId) {
+        await interaction.reply({ content: 'Configurez d’abord les tickets dans `/config panneau` > **Tickets**.', ephemeral: true });
+        return;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      const category = await fetchTicketCategory(interaction.guild, settings.ticketCategoryId);
+      if (!category) {
+        await interaction.editReply({ content: 'La catégorie enregistrée est introuvable. Choisissez-en une nouvelle dans `/config panneau` > **Tickets**.' });
+        return;
+      }
+      const channel = interaction.options.getChannel('salon', true);
+      const title = interaction.options.getString('titre') ?? 'Besoin d’aide ?';
+      const description = interaction.options.getString('description')
+        ?? 'Cliquez sur le bouton ci-dessous pour envoyer une demande privée à l’équipe de support. Un membre de l’équipe vous répondra dans votre ticket.';
+      await channel.send({
+        embeds: [new EmbedBuilder()
+          .setTitle(title)
+          .setDescription(description)
+          .setColor(0x5865f2)
+          .setFooter({ text: 'Les demandes sont visibles uniquement par vous et l’équipe de support.' })],
+        components: ticketPanelComponents(),
+        allowedMentions: { parse: [] },
+      });
+      await interaction.editReply({ content: `Le panneau de tickets a été publié dans <#${channel.id}>.` });
       return;
     }
 
     if (subcommand === 'create') {
       await interaction.deferReply({ ephemeral: true });
-      let category = null;
-      if (settings.ticketCategoryId) {
-        try {
-          category = await interaction.guild.channels.fetch(settings.ticketCategoryId);
-        } catch (error) {
-          if (Number(error.code) !== 10003) throw error;
-        }
-      }
-      if (!category || category.type !== ChannelType.GuildCategory) {
-        await interaction.editReply({ content: 'Le système de tickets n’est pas encore configuré. Un administrateur doit d’abord utiliser `/ticket setup`.' });
-        return;
-      }
-      const existing = interaction.guild.channels.cache.find((channel) => ticketOwner(channel) === interaction.user.id);
-      if (existing) {
-        await interaction.editReply({ content: `Un ticket est déjà ouvert pour vous : <#${existing.id}>.` });
-        return;
-      }
-      const slug = interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 70) || 'member';
-      const overwrites = [
-        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
-        { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] },
-      ];
-      if (settings.ticketSupportRoleId) {
-        overwrites.push({ id: settings.ticketSupportRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
-      }
-      const channel = await interaction.guild.channels.create({
-        name: `ticket-${slug}`,
-        type: ChannelType.GuildText,
-        parent: category.id,
-        topic: `ticket-owner:${interaction.user.id}`,
-        permissionOverwrites: overwrites,
-      });
-      await channel.send({ content: `<@${interaction.user.id}> Votre demande a bien été enregistrée. L’équipe de support vous répondra dans ce salon. Pour clôturer le ticket, utilisez /ticket close.`, allowedMentions: { users: [interaction.user.id] } });
-      await interaction.editReply({ content: `Votre demande a été créée. Vous pouvez la consulter dans <#${channel.id}>.` });
+      const result = await createTicket(interaction.guild, interaction.user, interaction.client, settings, 'Demande de support', '');
+      const response = {
+        created: `Votre demande a été créée. Vous pouvez la consulter dans <#${result.channel.id}>.`,
+        existing: `Un ticket est déjà ouvert pour vous : <#${result.channel.id}>.`,
+        pending: 'La création de votre ticket est déjà en cours. Veuillez patienter quelques secondes.',
+        unconfigured: 'Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/config panneau` > **Tickets**.',
+      };
+      await interaction.editReply({ content: response[result.status] });
       return;
     }
 
@@ -438,14 +821,7 @@ export async function handleCommand(interaction) {
 
     if (subcommand === 'close') {
       await interaction.deferReply({ ephemeral: true });
-      const participants = channel.permissionOverwrites.cache.filter((overwrite) =>
-        overwrite.id !== interaction.guild.id
-        && overwrite.id !== interaction.client.user.id
-        && overwrite.id !== settings.ticketSupportRoleId,
-      );
-      await Promise.all(participants.map((overwrite) => overwrite.edit({ SendMessages: false })));
-      await channel.setTopic(`ticket-closed:${ownerId}`);
-      await channel.setName(`closed-${channel.name.replace(/^ticket-/, '').slice(0, 90)}`);
+      await closeTicket(channel, ownerId, settings.ticketSupportRoleId);
       await interaction.editReply({ content: 'Le ticket a été clôturé. Son historique reste accessible à l’équipe de support.' });
       return;
     }
@@ -490,7 +866,7 @@ export async function handleCommand(interaction) {
       return;
     }
     await interaction.deferReply({ ephemeral: true });
-    await interaction.guild.members.unban(id, why);
+    await interaction.guild.members.unban(id, getReason());
     await interaction.editReply({ content: `Le bannissement du compte portant l’identifiant ${id} a été levé.` });
     await log(interaction, settings, 'unban', { id, tag: id }, null);
     return;
@@ -511,7 +887,7 @@ export async function handleCommand(interaction) {
     }
     const nickname = interaction.options.getString('nickname');
     await interaction.deferReply();
-    await member.setNickname(nickname, why);
+    await member.setNickname(nickname, getReason());
     await interaction.editReply({ content: nickname ? `Le pseudonyme de ${target.tag} a été défini sur « ${nickname} ».` : `Le pseudonyme de ${target.tag} a été réinitialisé.` });
     await log(interaction, settings, 'nickname', target, nickname || 'Pseudonyme réinitialisé');
     return;
@@ -552,6 +928,7 @@ export async function handleCommand(interaction) {
       await interaction.reply({ content: 'Un avertissement ne peut être consigné que pour un membre de ce serveur.', ephemeral: true });
       return;
     }
+    const why = getReason();
     const list = (settings.warnings[target.id] ??= []);
     list.push({ reason: why, by: interaction.user.id, at: Date.now() });
     await interaction.deferReply();
@@ -568,6 +945,7 @@ export async function handleCommand(interaction) {
       return;
     }
     const minutes = interaction.options.getInteger('minutes');
+    const why = getReason();
     await interaction.deferReply();
     await member.timeout(minutes * 60 * 1000, why);
     await tell(target, interaction.guild, `Votre droit de participer à la conversation a été suspendu pour ${minutes} minute(s).\nMotif : ${why}`);
@@ -593,6 +971,7 @@ export async function handleCommand(interaction) {
       await interaction.reply({ content: 'Ce membre n’appartient pas à ce serveur.', ephemeral: true });
       return;
     }
+    const why = getReason();
     await interaction.deferReply();
     await member.kick(why);
     await tell(target, interaction.guild, `Vous avez été exclu du serveur.\nMotif : ${why}`);
@@ -603,10 +982,254 @@ export async function handleCommand(interaction) {
 
   if (name === 'ban') {
     const days = interaction.options.getInteger('delete_days') ?? 0;
+    const why = getReason();
     await interaction.deferReply();
     await interaction.guild.members.ban(target.id, { reason: why, deleteMessageSeconds: days * 24 * 3600 });
     await tell(target, interaction.guild, `Vous avez été banni du serveur.\nMotif : ${why}`);
     await interaction.editReply({ content: `${target.tag} a été banni du serveur. Motif : ${why}`, allowedMentions: { parse: [] } });
     await log(interaction, settings, 'ban', target, why);
   }
+}
+
+export async function handleTicketInteraction(interaction) {
+  const isOpenButton = interaction.isButton() && interaction.customId === 'ticket:open';
+  const isCloseButton = interaction.isButton() && interaction.customId === 'ticket:close';
+  const isCreateModal = interaction.isModalSubmit() && interaction.customId === 'ticket:create';
+  if (!isOpenButton && !isCloseButton && !isCreateModal) return false;
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'Les tickets sont disponibles uniquement sur un serveur Discord.', ephemeral: true });
+    return true;
+  }
+
+  if (isOpenButton) {
+    const subject = new TextInputBuilder()
+      .setCustomId('subject')
+      .setLabel('Sujet de votre demande')
+      .setPlaceholder('Ex. : Besoin d’aide avec une commande')
+      .setStyle(TextInputStyle.Short)
+      .setMaxLength(100)
+      .setRequired(true);
+    const details = new TextInputBuilder()
+      .setCustomId('details')
+      .setLabel('Décrivez votre demande')
+      .setPlaceholder('Ajoutez les informations utiles pour notre équipe.')
+      .setStyle(TextInputStyle.Paragraph)
+      .setMaxLength(1000)
+      .setRequired(true);
+    const modal = new ModalBuilder()
+      .setCustomId('ticket:create')
+      .setTitle('Nouvelle demande de support')
+      .addComponents(
+        new ActionRowBuilder().addComponents(subject),
+        new ActionRowBuilder().addComponents(details),
+      );
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  if (isCloseButton) {
+    const settings = await getGuild(interaction.guildId);
+    const ownerId = ticketOwner(interaction.channel);
+    if (!ownerId) {
+      await interaction.reply({ content: 'Ce ticket est déjà clôturé ou n’est pas reconnu.', ephemeral: true });
+      return true;
+    }
+    if (!(await canManageTicket(interaction, settings, ownerId))) {
+      await interaction.reply({ content: 'Seul le demandeur ou un membre autorisé de l’équipe de support peut clôturer ce ticket.', ephemeral: true });
+      return true;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    await closeTicket(interaction.channel, ownerId, settings.ticketSupportRoleId);
+    await interaction.message.edit({ components: ticketCloseComponents(true) });
+    await interaction.editReply({ content: 'Le ticket a été clôturé. Son historique reste accessible à l’équipe de support.' });
+    return true;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const settings = await getGuild(interaction.guildId);
+  const subject = interaction.fields.getTextInputValue('subject').trim();
+  const details = interaction.fields.getTextInputValue('details').trim();
+  if (!subject || !details) {
+    await interaction.editReply({ content: 'Le sujet et la description doivent être renseignés.' });
+    return true;
+  }
+  const result = await createTicket(interaction.guild, interaction.user, interaction.client, settings, subject, details);
+  const response = {
+    created: `Votre ticket a été créé : <#${result.channel.id}>.`,
+    existing: `Vous avez déjà un ticket ouvert : <#${result.channel.id}>.`,
+    pending: 'La création de votre ticket est déjà en cours. Veuillez patienter quelques secondes.',
+    unconfigured: 'Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/config panneau` > **Tickets**.',
+  };
+  await interaction.editReply({ content: response[result.status] });
+  return true;
+}
+
+export async function handleConfigInteraction(interaction) {
+  const isConfigButton = interaction.isButton() && interaction.customId.startsWith('config:');
+  const isConfigSelect = (interaction.isStringSelectMenu?.() || interaction.isChannelSelectMenu?.() || interaction.isRoleSelectMenu?.())
+    && interaction.customId.startsWith('config:');
+  const isConfigModal = interaction.isModalSubmit() && interaction.customId.startsWith('config:save:');
+  if (!isConfigButton && !isConfigSelect && !isConfigModal) return false;
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'La configuration est disponible uniquement sur un serveur Discord.', ephemeral: true });
+    return true;
+  }
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'La permission « Gérer le serveur » est requise pour modifier ces paramètres.', ephemeral: true });
+    return true;
+  }
+
+  const settings = await getGuild(interaction.guildId);
+  const showSection = (section) => interaction.update({
+    embeds: [configPanelEmbed(settings, section)],
+    components: configPageComponents(section),
+    allowedMentions: { parse: [] },
+  });
+
+  if (isConfigSelect && interaction.customId === 'config:page') {
+    const section = interaction.values[0];
+    if (!configSections.some(([key]) => key === section)) {
+      await interaction.reply({ content: 'Cette rubrique de configuration n’est pas reconnue.', ephemeral: true });
+      return true;
+    }
+    await showSection(section);
+    return true;
+  }
+
+  if (isConfigSelect && interaction.isChannelSelectMenu()) {
+    const channelId = interaction.values[0];
+    const channel = interaction.guild.channels.cache.get(channelId);
+    const selections = {
+      'config:channel:logs': { section: 'logs', valid: channel?.type === ChannelType.GuildText, save: () => { settings.logChannelId = channelId; } },
+      'config:channel:welcome': { section: 'welcome', valid: channel?.type === ChannelType.GuildText, save: () => { settings.welcome.channelId = channelId; } },
+      'config:channel:leave': { section: 'leave', valid: channel?.type === ChannelType.GuildText, save: () => { settings.leave.channelId = channelId; } },
+      'config:channel:ticketCategory': { section: 'tickets', valid: channel?.type === ChannelType.GuildCategory, save: () => { settings.ticketCategoryId = channelId; } },
+    };
+    const selection = selections[interaction.customId];
+    if (!selection || !selection.valid) {
+      await interaction.reply({ content: 'Le salon sélectionné n’est pas valide pour ce réglage.', ephemeral: true });
+      return true;
+    }
+    selection.save();
+    await save();
+    await showSection(selection.section);
+    return true;
+  }
+
+  if (isConfigSelect && interaction.isRoleSelectMenu()) {
+    const role = interaction.guild.roles.cache.get(interaction.values[0]);
+    if (!role || role.id === interaction.guildId) {
+      await interaction.reply({ content: 'Le rôle sélectionné n’est pas valide.', ephemeral: true });
+      return true;
+    }
+    const roleTargets = {
+      'config:role:antiLink': { section: 'security', save: () => { settings.security.antiLink.exemptRoleId = role.id; } },
+      'config:role:ticketSupport': { section: 'tickets', save: () => { settings.ticketSupportRoleId = role.id; } },
+    };
+    const target = roleTargets[interaction.customId];
+    if (!target) {
+      await interaction.reply({ content: 'Cette sélection de rôle n’est pas reconnue.', ephemeral: true });
+      return true;
+    }
+    target.save();
+    await save();
+    await showSection(target.section);
+    return true;
+  }
+
+  if (isConfigButton) {
+    const refresh = interaction.customId.match(/^config:refresh(?::(overview|security|logs|welcome|leave|tickets))?$/);
+    if (refresh) {
+      await showSection(refresh[1] ?? 'overview');
+      return true;
+    }
+    if (interaction.customId === 'config:clear:logs') {
+      settings.logChannelId = null;
+      await save();
+      await showSection('logs');
+      return true;
+    }
+    if (interaction.customId === 'config:clear:antiLinkRole') {
+      settings.security.antiLink.exemptRoleId = null;
+      await save();
+      await showSection('security');
+      return true;
+    }
+    if (interaction.customId === 'config:clear:ticketRole') {
+      settings.ticketSupportRoleId = null;
+      await save();
+      await showSection('tickets');
+      return true;
+    }
+    if (interaction.customId === 'config:edit:welcome' || interaction.customId === 'config:edit:leave') {
+      const section = interaction.customId.slice('config:edit:'.length);
+      await interaction.showModal(announcementModal(settings, section));
+      return true;
+    }
+    const key = interaction.customId.slice('config:'.length);
+    if (!['language', 'antiLink', 'antiSpam', 'antiRaid'].includes(key)) {
+      await interaction.reply({ content: 'Cette action de configuration n’est pas reconnue.', ephemeral: true });
+      return true;
+    }
+    await interaction.showModal(configModalFor(settings, key));
+    return true;
+  }
+
+  const key = interaction.customId.slice('config:save:'.length);
+  if (key === 'language') {
+    const language = modalValue(interaction, 'language').toLowerCase();
+    if (!['fr', 'en'].includes(language)) {
+      await interaction.reply({ content: 'Langue invalide : saisissez `fr` ou `en`.', ephemeral: true });
+      return true;
+    }
+    settings.security.language = language;
+  } else if (key === 'antiLink') {
+    const enabled = enabledValue(modalValue(interaction, 'enabled'));
+    const mode = modalValue(interaction, 'mode').toLowerCase();
+    if (enabled === null || !['invites', 'all'].includes(mode)) {
+      await interaction.reply({ content: 'Paramètres invalides. Utilisez `on` ou `off`, puis `invites` ou `all`.', ephemeral: true });
+      return true;
+    }
+    Object.assign(settings.security.antiLink, { enabled, mode });
+  } else if (key === 'antiSpam') {
+    const enabled = enabledValue(modalValue(interaction, 'enabled'));
+    const maxMessages = boundedInteger(modalValue(interaction, 'maximum'), 3, 15);
+    const intervalSeconds = boundedInteger(modalValue(interaction, 'interval'), 3, 60);
+    const timeoutMinutes = boundedInteger(modalValue(interaction, 'timeout'), 1, 60);
+    if (enabled === null || maxMessages === null || intervalSeconds === null || timeoutMinutes === null) {
+      await interaction.reply({ content: 'Valeurs anti-spam invalides. Vérifiez les plages indiquées dans chaque champ.', ephemeral: true });
+      return true;
+    }
+    Object.assign(settings.security.antiSpam, { enabled, maxMessages, intervalSeconds, timeoutMinutes });
+  } else if (key === 'antiRaid') {
+    const enabled = enabledValue(modalValue(interaction, 'enabled'));
+    const joinThreshold = boundedInteger(modalValue(interaction, 'threshold'), 3, 30);
+    const intervalSeconds = boundedInteger(modalValue(interaction, 'interval'), 5, 120);
+    const protectionMinutes = boundedInteger(modalValue(interaction, 'duration'), 1, 60);
+    if (enabled === null || joinThreshold === null || intervalSeconds === null || protectionMinutes === null) {
+      await interaction.reply({ content: 'Valeurs anti-raid invalides. Vérifiez les plages indiquées dans chaque champ.', ephemeral: true });
+      return true;
+    }
+    Object.assign(settings.security.antiRaid, { enabled, joinThreshold, intervalSeconds, protectionMinutes });
+  } else if (key === 'welcome' || key === 'leave') {
+    const enabled = enabledValue(modalValue(interaction, 'enabled'));
+    const message = modalValue(interaction, 'message');
+    const ping = key === 'welcome' ? enabledValue(modalValue(interaction, 'ping')) : false;
+    if (enabled === null || !message || (key === 'welcome' && ping === null)) {
+      await interaction.reply({ content: 'Valeurs invalides. Vérifiez le texte et utilisez `on` ou `off` pour les options.', ephemeral: true });
+      return true;
+    }
+    Object.assign(settings[key], { enabled, message });
+    if (key === 'welcome') settings.welcome.ping = ping;
+  } else {
+    await interaction.reply({ content: 'Cette action de configuration n’est pas reconnue.', ephemeral: true });
+    return true;
+  }
+
+  await save();
+  await interaction.reply({
+    content: 'Configuration enregistrée. Revenez au panneau privé et choisissez la rubrique concernée pour afficher les nouvelles valeurs.',
+    ephemeral: true,
+  });
+  return true;
 }

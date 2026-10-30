@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
-import { commands, handleCommand } from './src/commands.js';
+import { commands, handleCommand, handleConfigInteraction, handleTicketInteraction } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
-import { handleMemberEvent } from './src/member-events.js';
+import { handleGuildJoined, handleMemberEvent } from './src/member-events.js';
 
 const token = (process.env.DISCORD_TOKEN || '').trim();
 if (!token) {
@@ -10,9 +10,11 @@ if (!token) {
 }
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const knownGuilds = new Set();
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[moderation-bot] Connecté sous ${c.user.tag} sur ${c.guilds.cache.size} serveur(s).`);
+  for (const guildId of c.guilds.cache.keys()) knownGuilds.add(guildId);
   c.user.setActivity('la sécurité du serveur', { type: 3 });
   await restoreRaidProtection(c).catch((err) => console.error('[moderation-bot] Restauration anti-raid impossible :', err.message));
   try {
@@ -22,6 +24,16 @@ client.once(Events.ClientReady, async (c) => {
     console.error(`[moderation-bot] Échec de l’enregistrement global des commandes (code ${err.code ?? 'inconnu'}) : ${err.message}`);
     console.error('[moderation-bot] Vérifiez l’identifiant d’application, le jeton DISCORD_TOKEN et la portée applications.commands.');
   }
+});
+
+client.on(Events.GuildCreate, (guild) => {
+  if (!client.isReady() || knownGuilds.has(guild.id)) return;
+  knownGuilds.add(guild.id);
+  handleGuildJoined(guild).catch((err) => console.error('[moderation-bot] Message de bienvenue du bot impossible :', err));
+});
+
+client.on(Events.GuildDelete, (guild) => {
+  knownGuilds.delete(guild.id);
 });
 
 client.on(Events.MessageCreate, (message) => {
@@ -38,15 +50,20 @@ client.on(Events.GuildMemberRemove, (member) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'Ces commandes sont disponibles uniquement sur un serveur Discord.', ephemeral: true });
-    return;
-  }
   try {
+    if (interaction.isButton() || interaction.isModalSubmit()) {
+      if (await handleTicketInteraction(interaction)) return;
+      await handleConfigInteraction(interaction);
+      return;
+    }
+    if (!interaction.isChatInputCommand()) return;
+    if (!interaction.inGuild()) {
+      await interaction.reply({ content: 'Ces commandes sont disponibles uniquement sur un serveur Discord.', ephemeral: true });
+      return;
+    }
     await handleCommand(interaction);
   } catch (err) {
-    console.error('[moderation-bot] Échec de la commande :', err);
+    console.error('[moderation-bot] Échec de l’interaction :', err);
     const messages = {
       50001: 'Le bot ne dispose pas de l’accès nécessaire à cette ressource.',
       50013: 'Le bot ne dispose pas des permissions nécessaires. Vérifiez ses permissions et la position de son rôle.',
@@ -54,7 +71,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       10007: 'Ce membre ne fait plus partie du serveur.',
       10026: 'Aucun bannissement actif ne correspond à cet identifiant.',
     };
-    const text = messages[err.code] || 'La commande n’a pas pu être exécutée. Vérifiez les permissions du bot, la hiérarchie des rôles et les paramètres fournis, puis réessayez.';
+    const text = messages[err.code] || 'L’action n’a pas pu être exécutée. Vérifiez les permissions du bot, la hiérarchie des rôles et les paramètres fournis, puis réessayez.';
     if (interaction.deferred) await interaction.editReply({ content: text }).catch(() => {});
     else if (!interaction.replied) await interaction.reply({ content: text, ephemeral: true }).catch(() => {});
   }

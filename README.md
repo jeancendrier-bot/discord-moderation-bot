@@ -9,8 +9,10 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 2. Dans **Bot > Privileged Gateway Intents**, activez **Server Members Intent** et **Message Content Intent**.
 3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
-5. Utilisez `/logs salon` pour choisir le salon de journalisation, `/config` pour régler les protections et `/bienvenue configurer` ou `/depart configurer` pour les annonces.
-6. Pour activer les tickets, un administrateur configure leur catégorie avec `/ticket setup`.
+5. Utilisez `/config panneau` pour ouvrir le centre privé qui regroupe les protections, journaux, annonces et réglages des tickets.
+6. Pour publier un panneau de tickets, configurez sa catégorie dans `/config panneau`, puis utilisez `/ticket panel`.
+
+Lorsqu’il rejoint un serveur, le bot remercie l’équipe dans le salon système ou, si celui-ci n’est pas accessible, dans le premier salon textuel où il peut écrire.
 
 ## Modération
 | Commande | Fonction |
@@ -28,50 +30,51 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 | `/purge amount [from]` | Supprime jusqu’à 100 messages récents, avec un filtre facultatif par auteur. |
 | `/slowmode seconds` | Définit le délai entre deux messages ; `0` désactive le mode lent. |
 | `/lock` et `/unlock` | Verrouillent ou déverrouillent l’envoi de messages dans le salon actuel. |
+| `/dire message [salon]` | Publie un message au nom du bot ; les mentions sont désactivées et la commande nécessite **Gérer les messages**. |
+| `/vocal rejoindre salon` | Connecte le bot au salon vocal choisi (sans musique ni diffusion audio). |
+| `/vocal quitter` | Déconnecte le bot du salon vocal actuel. |
 | `/nickname user [nickname] [reason]` | Définit ou réinitialise le pseudonyme d’un membre. |
-| `/modlog [channel]` | Définit le salon du journal de modération ; sans salon, le journal est désactivé. |
-| `/logs salon channel` | Définit le salon où le bot publie les journaux de modération. |
 | `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
-| `/bienvenue configurer` | Active ou désactive l’annonce d’arrivée, choisit son salon, son texte et une image jointe. |
-| `/bienvenue afficher` | Consulte la configuration de l’annonce d’arrivée. |
-| `/depart configurer` | Active ou désactive l’annonce de départ, choisit son salon, son texte et une image jointe. |
-| `/depart afficher` | Consulte la configuration de l’annonce de départ. |
 
-Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Une image PNG, JPEG, GIF ou WebP de 8 Mo maximum peut être jointe à `/bienvenue configurer` ou `/depart configurer`; le bot la conserve sur son volume de données. Le bot doit avoir la permission d’envoyer des messages et des pièces jointes dans les salons choisis.
+Pour rejoindre un salon vocal, le bot a besoin de la permission **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son.
+
+Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Le panneau règle le salon, le texte, l’activation et le ping. Pour joindre ou retirer une image, utilisez les sous-commandes `/config bienvenue` ou `/config depart`; le fichier est conservé sur le volume de données du bot.
 
 ## Protection automatique
-La commande `/config` est réservée aux membres disposant de **Manage Server**.
+La commande `/config` est réservée aux membres disposant de **Gérer le serveur**. Pour retrouver les réglages au même endroit, utilisez `/config panneau` : le menu permet de naviguer entre les catégories, les salons et rôles se choisissent dans des listes Discord, et les formulaires servent à régler les valeurs détaillées.
 
 | Commande | Paramètres |
 |---|---|
-| `/config afficher` | Consulte la langue et les paramètres des trois protections automatiques. |
-| `/config langue language` | Définit la langue des notifications de sécurité (français ou anglais). |
-| `/config antilien actif mode [role_exempt] [effacer_exemption]` | Supprime les invitations Discord ou tous les liens ; peut ajouter ou retirer un rôle exempté. Sans préciser ces options, le rôle déjà configuré est conservé. |
-| `/config antispam actif maximum intervalle timeout` | Détecte les envois répétés selon un seuil et une fenêtre configurables, supprime les messages concernés et applique une suspension. |
-| `/config antiraid actif seuil intervalle duree` | Détecte une arrivée massive et renforce temporairement le niveau de vérification du serveur. |
+| `/config panneau` | Ouvre le centre de configuration privé et esthétique : protections, journaux, annonces et tickets, avec rubriques, boutons, sélecteurs de salon/rôle et formulaires. |
+| `/config afficher` | Consulte les paramètres des protections automatiques. |
+| `/config langue`, `/config antilien`, `/config antispam`, `/config antiraid` | Raccourcis directs conservés pour modifier les protections sans ouvrir le panneau. |
+| `/config bienvenue` et `/config depart` | Gèrent aussi les images personnalisées des annonces depuis la même commande `/config`. |
 
-Les valeurs sont choisies dans les options de chaque commande. Les notifications de détection sont envoyées au salon défini avec `/modlog`. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
+Les notifications de détection sont envoyées au salon choisi dans la rubrique **Journaux**. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
 
 ## Tickets
 | Commande | Fonction |
 |---|---|
-| `/ticket setup category [support_role]` | Configure la catégorie des tickets et le rôle de l’équipe de support. |
-| `/ticket create` | Ouvre un salon privé de support. Un seul ticket ouvert est autorisé par membre. |
+| `/ticket panel salon [titre] [description]` | Publie un panneau interactif avec un bouton d’ouverture et un formulaire de demande. |
+| Bouton « Ouvrir un ticket » | Ouvre un formulaire privé demandant le sujet et les détails ; crée ensuite un salon visible par le demandeur et l’équipe. |
+| Bouton « Clôturer le ticket » | Permet au demandeur ou à l’équipe autorisée de clôturer le ticket depuis son salon. |
+| `/ticket create` | Ouvre un ticket privé sans formulaire. Un seul ticket ouvert est autorisé par membre. |
 | `/ticket close` | Clôture le ticket actuel tout en conservant son historique pour l’équipe. |
 | `/ticket add user` | Autorise un membre supplémentaire à consulter et utiliser le ticket actuel. |
 | `/ticket remove user` | Retire à un membre son accès au ticket actuel. |
 
 Le bot vérifie la hiérarchie des rôles avant toute action de modération. Pour les filtres automatiques, il doit pouvoir gérer les messages et appliquer des suspensions ; son rôle doit être placé au-dessus des membres concernés. Le mode anti-raid nécessite la permission **Manage Server**.
+Pour activer le panneau, un administrateur choisit d’abord la catégorie et le rôle support dans `/config panneau`, puis publie le panneau dans un salon accessible avec `/ticket panel`. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links** ; les membres peuvent ouvrir le formulaire via le bouton.
 
 ## Configuration
 | Variable | Obligatoire | Description |
 |---|---|---|
 | `DISCORD_TOKEN` | Oui | Jeton du bot Discord. |
-| `MODLOG_CHANNEL_ID` | Non | Salon de journalisation utilisé par défaut. La commande `/modlog` permet de le modifier. |
+| `MODLOG_CHANNEL_ID` | Non | Salon de journalisation utilisé par défaut ; le centre `/config panneau` permet de le modifier. |
 | `CONFIG_PATH` | Non | Chemin du fichier de configuration persistant. Par défaut : `/data/moderation-config.json`. |
 
 Les avertissements, paramètres et images des annonces sont conservés après redémarrage. Le stockage doit être persistant sur l’hébergeur.
-La commande `/config` n’est visible qu’aux membres ayant la permission **Gérer le serveur**. Pour voir ses sous-commandes, saisissez `/config` puis sélectionnez l’action proposée. L’application doit aussi avoir été invitée avec la portée `applications.commands`.
+L’application doit aussi avoir été invitée avec la portée `applications.commands`.
 Les commandes sont enregistrées globalement pour tous les serveurs où le bot est installé. Leur propagation peut prendre jusqu’à une heure après le redémarrage.
 
 Projet distribué sous licence MIT.
