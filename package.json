@@ -1,11 +1,12 @@
 {
   "name": "fadehost-moderation-bot",
   "version": "1.0.0",
-  "description": "Warnings, timeouts, kicks, bans and message purges with a moderation log. Hosted by FadeHost.",
+  "description": "Discord moderation, private tickets, anti-link, anti-spam and anti-raid protection. Hosted by FadeHost.",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
