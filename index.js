@@ -1,7 +1,9 @@
 import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
 import { commands, handleCommand, handleConfigInteraction, handleTicketInteraction } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
-import { handleGuildJoined, handleMemberEvent } from './src/member-events.js';
+import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
+import { restoreConfiguredVoice } from './src/voice.js';
+import { handleVerificationInteraction } from './src/verification.js';
 
 const token = (process.env.DISCORD_TOKEN || '').trim();
 if (!token) {
@@ -11,12 +13,19 @@ if (!token) {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 const knownGuilds = new Set();
+let hasBeenReady = false;
+let shuttingDown = false;
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[moderation-bot] Connecté sous ${c.user.tag} sur ${c.guilds.cache.size} serveur(s).`);
+  hasBeenReady = true;
   for (const guildId of c.guilds.cache.keys()) knownGuilds.add(guildId);
   c.user.setActivity('la sécurité du serveur', { type: 3 });
+  await handleBotStatus(c, 'online');
   await restoreRaidProtection(c).catch((err) => console.error('[moderation-bot] Restauration anti-raid impossible :', err.message));
+  for (const guild of c.guilds.cache.values()) {
+    restoreConfiguredVoice(guild).catch((err) => console.error(`[moderation-bot] Restauration vocale impossible sur ${guild.id} :`, err));
+  }
   try {
     await new REST().setToken(token).put(Routes.applicationCommands(c.user.id), { body: commands });
     console.log(`[moderation-bot] ${commands.length} commandes slash globales enregistrées : ${commands.map(({ name }) => `/${name}`).join(', ')}. Leur propagation peut prendre jusqu’à une heure.`);
@@ -26,10 +35,26 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
+client.on(Events.ShardDisconnect, (closeEvent) => {
+  if (!hasBeenReady || shuttingDown) return;
+  handleBotStatus(client, 'disconnected', String(closeEvent.code))
+    .catch((error) => console.error('[moderation-bot] Annonce de perte de connexion impossible :', error));
+});
+
+client.on(Events.ShardReady, () => {
+  if (!hasBeenReady || shuttingDown) return;
+  handleBotStatus(client, 'reconnected')
+    .catch((error) => console.error('[moderation-bot] Annonce de reconnexion impossible :', error));
+  for (const guild of client.guilds.cache.values()) {
+    restoreConfiguredVoice(guild).catch((error) => console.error(`[moderation-bot] Restauration vocale impossible sur ${guild.id} :`, error));
+  }
+});
+
 client.on(Events.GuildCreate, (guild) => {
   if (!client.isReady() || knownGuilds.has(guild.id)) return;
   knownGuilds.add(guild.id);
   handleGuildJoined(guild).catch((err) => console.error('[moderation-bot] Message de bienvenue du bot impossible :', err));
+  restoreConfiguredVoice(guild).catch((err) => console.error(`[moderation-bot] Restauration vocale impossible sur ${guild.id} :`, err));
 });
 
 client.on(Events.GuildDelete, (guild) => {
@@ -51,7 +76,14 @@ client.on(Events.GuildMemberRemove, (member) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
-    if (interaction.isButton() || interaction.isModalSubmit()) {
+    if (
+      interaction.isButton()
+      || interaction.isModalSubmit()
+      || interaction.isStringSelectMenu()
+      || interaction.isChannelSelectMenu()
+      || interaction.isRoleSelectMenu()
+    ) {
+      if (await handleVerificationInteraction(interaction)) return;
       if (await handleTicketInteraction(interaction)) return;
       await handleConfigInteraction(interaction);
       return;
@@ -89,8 +121,21 @@ client.login(token).catch((error) => {
 });
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.on(signal, () => {
-    client.destroy();
-    process.exit(0);
+  process.once(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const notice = handleBotStatus(client, 'offline', `arrêt demandé (${signal})`);
+    const deadline = new Promise((resolve) => setTimeout(() => resolve(false), 5000));
+    Promise.race([notice.then(() => true), deadline])
+      .then((sent) => {
+        if (!sent) console.error('[moderation-bot] Délai dépassé avant la fin de l’annonce d’arrêt.');
+        client.destroy();
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error('[moderation-bot] Arrêt propre impossible :', error);
+        client.destroy();
+        process.exit(1);
+      });
   });
 }

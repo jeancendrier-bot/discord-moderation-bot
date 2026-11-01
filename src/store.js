@@ -166,6 +166,18 @@ export async function getGuild(guildId) {
     settings.ticketSupportRoleId = null;
     changed = true;
   }
+  if (!Object.hasOwn(settings, 'ticketPanelTitle')) {
+    settings.ticketPanelTitle = 'Contacter le support';
+    changed = true;
+  }
+  if (!Object.hasOwn(settings, 'ticketPanelDescription')) {
+    settings.ticketPanelDescription = 'Cliquez sur le bouton ci-dessous pour transmettre une demande privée à l’équipe de support. Décrivez clairement votre besoin ; un membre de l’équipe vous répondra dans votre ticket.';
+    changed = true;
+  }
+  if (!Object.hasOwn(settings, 'voiceChannelId')) {
+    settings.voiceChannelId = null;
+    changed = true;
+  }
   for (const [key, defaultMessage] of [
     ['welcome', 'Bienvenue {user} sur {server} !'],
     ['leave', '{username} a quitté {server}.'],
@@ -198,10 +210,11 @@ export async function getGuild(guildId) {
     antiLink: { enabled: false, mode: 'invites', exemptRoleId: null },
     antiSpam: { enabled: false, maxMessages: 5, intervalSeconds: 8, timeoutMinutes: 5 },
     antiRaid: { enabled: false, joinThreshold: 8, intervalSeconds: 15, protectionMinutes: 10 },
+    verification: { enabled: false, roleId: null },
     raidProtection: null,
   };
   for (const [key, defaultValue] of Object.entries(securityDefaults)) {
-    if (key === 'antiLink' || key === 'antiSpam' || key === 'antiRaid') {
+    if (key === 'antiLink' || key === 'antiSpam' || key === 'antiRaid' || key === 'verification') {
       if (!settings.security[key] || typeof settings.security[key] !== 'object' || Array.isArray(settings.security[key])) {
         settings.security[key] = { ...defaultValue };
         changed = true;
