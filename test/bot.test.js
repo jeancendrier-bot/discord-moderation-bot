@@ -12,17 +12,21 @@ let saveMemberEventImage;
 let removeMemberEventImage;
 let commands;
 let handleCommand;
+let handleAdminPanelInteraction;
 let handleConfigInteraction;
 let handleTicketInteraction;
 let handleVerificationInteraction;
+let handleEntertainmentInteraction;
+let restoreGiveaways;
 let security;
 
 before(async () => {
   dataDirectory = await mkdtemp(join(tmpdir(), 'moderation-bot-test-'));
   process.env.CONFIG_PATH = join(dataDirectory, 'config.json');
   ({ getGuild, removeMemberEventImage, save, saveMemberEventImage } = await import('../src/store.js'));
-  ({ commands, handleCommand, handleConfigInteraction, handleTicketInteraction } = await import('../src/commands.js'));
+  ({ commands, handleAdminPanelInteraction, handleCommand, handleConfigInteraction, handleTicketInteraction } = await import('../src/commands.js'));
   ({ handleVerificationInteraction } = await import('../src/verification.js'));
+  ({ handleEntertainmentInteraction, restoreGiveaways } = await import('../src/entertainment.js'));
   security = await import('../src/security.js');
 });
 
@@ -33,7 +37,7 @@ after(async () => {
 describe('slash command definitions', () => {
   it('serialize unique commands with valid Discord descriptions', async () => {
     const names = commands.map((command) => command.name);
-    assert.equal(names.length, 21);
+    assert.equal(names.length, 25);
     assert.equal(new Set(names).size, names.length);
 
     const inspect = (option, path) => {
@@ -45,12 +49,18 @@ describe('slash command definitions', () => {
 
     for (const command of commands) inspect(command, `/${command.name}`);
     const config = commands.find((command) => command.name === 'config');
-    assert.deepEqual(config.options.map((option) => option.name), ['langue', 'antilien', 'antispam', 'antiraid', 'journaux', 'bienvenue', 'depart', 'tickets', 'verification']);
+    assert.deepEqual(config.options.map((option) => option.name), ['langue', 'journaux', 'bienvenue', 'depart', 'tickets', 'verification']);
+    assert.equal(commands.find((command) => command.name === 'securitas').default_member_permissions, '32');
     assert.deepEqual(commands.find((command) => command.name === 'unban').options.map((option) => option.name), ['retirer', 'liste']);
     assert.ok(commands.some((command) => command.name === 'logs'));
     assert.deepEqual(commands.find((command) => command.name === 'logs').options.map((option) => option.name), ['afficher']);
     assert.ok(commands.some((command) => command.name === 'dire'));
-    assert.deepEqual(commands.find((command) => command.name === 'ticket').options.map((option) => option.name), ['panel', 'create', 'close', 'add', 'remove']);
+    assert.deepEqual(commands.find((command) => command.name === 'ticket').options.map((option) => option.name), ['panel']);
+    assert.equal(commands.find((command) => command.name === 'ticket').default_member_permissions, '32');
+    assert.equal(commands.find((command) => command.name === 'panneau-admin').default_member_permissions, '8');
+    assert.equal(commands.find((command) => command.name === 'giveaway').default_member_permissions, '32');
+    assert.deepEqual(commands.find((command) => command.name === 'giveaway').options.map((option) => option.name), ['lot', 'duree', 'gagnants', 'salon']);
+    assert.ok(commands.some((command) => command.name === 'minijeu'));
     assert.ok(config.options.find((option) => option.name === 'bienvenue').options.some((option) => option.name === 'image'));
     assert.ok(!config.options.some((option) => ['panneau', 'afficher'].includes(option.name)));
     const helpInteraction = { commandName: 'aide', reply: async (message) => { helpInteraction.response = message; } };
@@ -78,6 +88,217 @@ describe('slash command definitions', () => {
     });
     assert.equal(response.ephemeral, true);
     assert.match(response.content, /permission Discord requise/);
+  });
+
+  it('displays the administrator access panel and opens its access-key field only for administrators', async () => {
+    const command = {
+      commandName: 'panneau-admin',
+      memberPermissions: { has: () => true },
+      reply: async (response) => { command.response = response; },
+    };
+    await handleCommand(command);
+    assert.equal(command.response.ephemeral, true);
+    assert.equal(command.response.embeds[0].data.title, 'Accès Administrateur');
+    assert.match(command.response.embeds[0].data.description, /Authentification/);
+    assert.equal(command.response.components[0].components[0].data.custom_id, 'admin-panel:authenticate');
+
+    const button = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      customId: 'admin-panel:authenticate',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      showModal: async (modal) => { button.modal = modal; },
+      reply: async (response) => { button.response = response; },
+    };
+    assert.equal(await handleAdminPanelInteraction(button), true);
+    assert.equal(button.modal.data.title, 'Authentification');
+    assert.equal(button.modal.components[0].components[0].data.label, 'Clés d’accès');
+
+    const submitted = {
+      isButton: () => false,
+      isModalSubmit: () => true,
+      customId: 'admin-panel:authenticate',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      reply: async (response) => { submitted.response = response; },
+    };
+    assert.equal(await handleAdminPanelInteraction(submitted), true);
+    assert.equal(submitted.response.ephemeral, true);
+    assert.match(submitted.response.content, /ne vérifie ni ne stocke la clé saisie/);
+
+    const unauthorized = {
+      ...button,
+      memberPermissions: { has: () => false },
+      reply: async (response) => { unauthorized.response = response; },
+      showModal: async () => assert.fail('Non-administrators must not open the access-key modal'),
+    };
+    await handleAdminPanelInteraction(unauthorized);
+    assert.match(unauthorized.response.content, /permission Discord « Administrateur »/);
+  });
+
+  it('opens the Securitas dashboard with all three protection controls', async () => {
+    const interaction = {
+      commandName: 'securitas',
+      guildId: '123456789012345650',
+      memberPermissions: { has: () => true },
+      reply: async (response) => { interaction.response = response; },
+    };
+
+    await handleCommand(interaction);
+    assert.equal(interaction.response.ephemeral, true);
+    assert.equal(interaction.response.embeds[0].data.title, 'Securitas');
+    assert.deepEqual(interaction.response.embeds[0].data.fields.map((field) => field.name), [
+      '🚨 Anti-raid',
+      '💬 Anti-spam',
+      '🔗 Anti-liens',
+    ]);
+    assert.equal(interaction.response.components.length, 5);
+    assert.ok(interaction.response.components.flatMap((row) => row.components)
+      .some((component) => component.data.custom_id === 'warboubou:edit:antiRaid'));
+  });
+
+  it('creates a persistent giveaway and accepts each participant only once', async () => {
+    const guildId = '123456789012345651';
+    const sentMessages = [];
+    const channel = {
+      id: '987654321098765431',
+      send: async (message) => {
+        const created = {
+          id: '987654321098765432',
+          payload: message,
+          edit: async (updated) => { created.payload = updated; },
+          delete: async () => {},
+        };
+        sentMessages.push(created);
+        return created;
+      },
+    };
+    const currentChannel = { id: '987654321098765430' };
+    const interaction = {
+      commandName: 'giveaway',
+      guildId,
+      channelId: currentChannel.id,
+      channel: currentChannel,
+      user: { id: '111111111111111111' },
+      client: { channels: { fetch: async () => channel } },
+      memberPermissions: { has: () => true },
+      options: {
+        getString: () => 'Un mois de Nitro',
+        getInteger: (name) => ({ duree: 60, gagnants: 2 })[name],
+        getChannel: (name) => name === 'salon' ? channel : null,
+      },
+      deferReply: async () => {},
+      editReply: async (response) => { interaction.response = response; },
+    };
+    await handleCommand(interaction);
+
+    const settings = await getGuild(guildId);
+    assert.equal(settings.giveaways.length, 1);
+    assert.equal(settings.giveaways[0].prize, 'Un mois de Nitro');
+    assert.equal(settings.giveaways[0].winnerCount, 2);
+    assert.equal(settings.giveaways[0].channelId, channel.id);
+    assert.equal(sentMessages[0].payload.components[0].components[0].data.custom_id, `giveaway:join:${settings.giveaways[0].id}`);
+
+    const makeJoinInteraction = (userId) => ({
+      isButton: () => true,
+      customId: `giveaway:join:${settings.giveaways[0].id}`,
+      inGuild: () => true,
+      guildId,
+      channelId: channel.id,
+      user: { id: userId, bot: false },
+      client: interaction.client,
+      message: sentMessages[0],
+    });
+    const firstJoin = makeJoinInteraction('222222222222222222');
+    firstJoin.reply = async (response) => { firstJoin.response = response; };
+    assert.equal(await handleEntertainmentInteraction(firstJoin), true);
+    assert.match(firstJoin.response.content, /participation est enregistrée/);
+    assert.deepEqual((await getGuild(guildId)).giveaways[0].entrants, ['222222222222222222']);
+
+    const duplicateJoin = makeJoinInteraction('222222222222222222');
+    duplicateJoin.reply = async (response) => { duplicateJoin.response = response; };
+    await handleEntertainmentInteraction(duplicateJoin);
+    assert.match(duplicateJoin.response.content, /participes déjà/);
+    assert.equal((await getGuild(guildId)).giveaways[0].entrants.length, 1);
+  });
+
+  it('explains how to choose a text channel when a giveaway is started from a non-text channel', async () => {
+    const interaction = {
+      commandName: 'giveaway',
+      guildId: '123456789012345653',
+      memberPermissions: { has: () => true },
+      channel: { id: '987654321098765433' },
+      options: {
+        getString: () => 'Un lot',
+        getInteger: (name) => ({ duree: 60, gagnants: 1 })[name],
+        getChannel: () => null,
+      },
+      reply: async (response) => { interaction.response = response; },
+    };
+
+    await handleCommand(interaction);
+    assert.equal(interaction.response.ephemeral, true);
+    assert.match(interaction.response.content, /salon textuel/);
+  });
+
+  it('opens and plays the pierre-feuille-ciseaux mini-game privately', async () => {
+    const start = {
+      commandName: 'minijeu',
+      guildId: '123456789012345652',
+      memberPermissions: { has: () => false },
+      reply: async (response) => { start.response = response; },
+    };
+    await handleCommand(start);
+    assert.equal(start.response.ephemeral, true);
+    assert.equal(start.response.components[0].components.length, 3);
+
+    const play = {
+      isButton: () => true,
+      customId: 'minijeu:rps:pierre',
+      inGuild: () => true,
+      reply: async (response) => { play.response = response; },
+    };
+    assert.equal(await handleEntertainmentInteraction(play), true);
+    assert.equal(play.response.ephemeral, true);
+    assert.match(play.response.content, /Tu as choisi ✊ Pierre/);
+  });
+
+  it('finishes expired saved giveaways after restoring them', async () => {
+    const guildId = '123456789012345653';
+    const settings = await getGuild(guildId);
+    settings.giveaways.push({
+      id: 'expired-giveaway',
+      prize: 'Petit lot',
+      winnerCount: 1,
+      endsAt: Date.now() - 1,
+      entrants: ['333333333333333333'],
+      winners: [],
+      ended: false,
+      channelId: '987654321098765433',
+      messageId: '987654321098765434',
+    });
+    await save();
+
+    let updatedMessage;
+    const channel = {
+      messages: {
+        fetch: async () => ({
+          edit: async (payload) => { updatedMessage = payload; },
+        }),
+      },
+    };
+    const client = {
+      guilds: { cache: new Collection([[guildId, { id: guildId }]]) },
+      channels: { fetch: async () => channel },
+    };
+    await restoreGiveaways(client);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const ended = (await getGuild(guildId)).giveaways[0];
+    assert.equal(ended.ended, true);
+    assert.deepEqual(ended.winners, ['333333333333333333']);
+    assert.equal(updatedMessage.components[0].components[0].data.disabled, true);
   });
 
   it('clears the saved voice channel when the leave command is used', async () => {
@@ -254,6 +475,55 @@ describe('moderation commands', () => {
   });
 
   describe('per-command interactive configuration', () => {
+    it('updates anti-raid, anti-spam and anti-link settings from the Securitas dashboard', async () => {
+      const guildId = '123456789012345659';
+      const makeInteraction = (type, customId, extra = {}) => ({
+        isButton: () => type === 'button',
+        isModalSubmit: () => type === 'modal',
+        isStringSelectMenu: () => type === 'string',
+        isChannelSelectMenu: () => type === 'channel',
+        isRoleSelectMenu: () => type === 'role',
+        customId,
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        ...extra,
+      });
+
+      const toggle = makeInteraction('button', 'warboubou:set:antiRaid:toggle', {
+        update: async (response) => { toggle.response = response; },
+      });
+      assert.equal(await handleConfigInteraction(toggle), true);
+      assert.equal((await getGuild(guildId)).security.antiRaid.enabled, true);
+      assert.equal(toggle.response.embeds[0].data.title, 'Securitas');
+
+      const mode = makeInteraction('string', 'warboubou:select:antiLinkMode', {
+        values: ['all'],
+        update: async (response) => { mode.response = response; },
+      });
+      assert.equal(await handleConfigInteraction(mode), true);
+      assert.equal((await getGuild(guildId)).security.antiLink.mode, 'all');
+      assert.equal(mode.response.embeds[0].data.title, 'Securitas');
+
+      const edit = makeInteraction('button', 'warboubou:edit:antiSpam', {
+        showModal: async (modal) => { edit.modal = modal; },
+      });
+      assert.equal(await handleConfigInteraction(edit), true);
+      assert.equal(edit.modal.data.custom_id, 'warboubou:save:antiSpam');
+
+      const values = { maximum: '7', interval: '12', timeout: '4' };
+      const submit = makeInteraction('modal', 'warboubou:save:antiSpam', {
+        fields: { getTextInputValue: (key) => values[key] },
+        update: async (response) => { submit.response = response; },
+      });
+      assert.equal(await handleConfigInteraction(submit), true);
+      assert.deepEqual(
+        ((await getGuild(guildId)).security.antiSpam),
+        { enabled: false, maxMessages: 7, intervalSeconds: 12, timeoutMinutes: 4 },
+      );
+      assert.equal(submit.response.embeds[0].data.title, 'Securitas');
+    });
+
     it('saves ticket panel wording and can preview or publish the active panel', async () => {
       const guildId = '123456789012345660';
       const settings = await getGuild(guildId);
@@ -441,24 +711,6 @@ describe('moderation commands', () => {
       assert.match(publish.response.content, /panneau de vérification a été publié/);
     });
 
-    it('opens the selected configuration directly with its own controls', async () => {
-      const interaction = {
-        commandName: 'config',
-        guildId: '123456789012345690',
-        memberPermissions: { has: () => true },
-        options: { getSubcommand: () => 'antispam' },
-        reply: async (response) => { interaction.response = response; },
-      };
-
-      await handleCommand(interaction);
-      assert.equal(interaction.response.ephemeral, true);
-      assert.equal(interaction.response.embeds[0].data.title, '💬 Protection anti-spam');
-      assert.deepEqual(
-        interaction.response.components[0].components.map((button) => button.data.custom_id),
-        ['config:set:antiSpam:toggle', 'config:edit:antiSpam'],
-      );
-    });
-
     it('persists button toggles and refreshes the same command controls', async () => {
       const interaction = {
         isButton: () => true,
@@ -599,6 +851,29 @@ describe('moderation commands', () => {
     assert.equal(response.length, 1);
     assert.match(response[0].content, /5 minute/);
     assert.deepEqual(response[0].allowedMentions, { parse: [] });
+  });
+
+  it('explains when purge or slowmode is used outside a compatible text channel', async () => {
+    for (const commandName of ['purge', 'slowmode']) {
+      const interaction = {
+        commandName,
+        guildId: `12345678901234569${commandName === 'purge' ? '1' : '2'}`,
+        memberPermissions: { has: () => true },
+        channel: {},
+        options: {
+          getInteger: () => 10,
+          getUser: () => null,
+        },
+        deferred: false,
+        deferReply: async () => { interaction.deferred = true; },
+        reply: async (response) => { interaction.response = response; },
+      };
+
+      await handleCommand(interaction);
+      assert.equal(interaction.deferred, false);
+      assert.equal(interaction.response.ephemeral, true);
+      assert.match(interaction.response.content, /salon textuel/);
+    }
   });
 
   it('configures the moderation log channel from its own command and displays entries', async () => {
@@ -934,7 +1209,7 @@ describe('persisted announcement images', () => {
 describe('member arrival and departure announcements', () => {
   it('announces online and graceful offline states in the configured log channel', async () => {
     const { handleBotStatus } = await import('../src/member-events.js');
-    const guildId = '123456789012345695';
+    const guildId = '1565306572937232417';
     const settings = await getGuild(guildId);
     settings.logChannelId = '987654321098765438';
     await save();
@@ -950,7 +1225,7 @@ describe('member arrival and departure announcements', () => {
     };
     const guild = {
       id: guildId,
-      name: 'Status test server',
+      name: 'Support server',
       members: { me: botMember },
       systemChannel: null,
       channels: {
@@ -958,9 +1233,27 @@ describe('member arrival and departure announcements', () => {
         fetch: async (id) => id === channel.id ? channel : null,
       },
     };
+    let otherGuildStatusCount = 0;
+    const otherGuildChannel = {
+      id: '987654321098765439',
+      name: 'other-server-status',
+      isTextBased: () => true,
+      permissionsFor: () => ({ has: () => true }),
+      send: async () => { otherGuildStatusCount += 1; },
+    };
+    const otherGuild = {
+      id: '123456789012345695',
+      name: 'Other server',
+      members: { me: botMember },
+      systemChannel: otherGuildChannel,
+      channels: {
+        cache: new Collection([[otherGuildChannel.id, otherGuildChannel]]),
+        fetch: async () => otherGuildChannel,
+      },
+    };
     const client = {
       user: { tag: 'ModerationBot#0001' },
-      guilds: { cache: new Collection([[guild.id, guild]]) },
+      guilds: { cache: new Collection([[guild.id, guild], [otherGuild.id, otherGuild]]) },
     };
 
     await handleBotStatus(client, 'online');
@@ -973,6 +1266,7 @@ describe('member arrival and departure announcements', () => {
     assert.equal(sent[2].embeds[0].data.title, '🟢 Connexion Discord rétablie');
     assert.match(sent[3].embeds[0].data.description, /s’arrête proprement \(test\)/);
     assert.deepEqual(sent[0].allowedMentions, { parse: [] });
+    assert.equal(otherGuildStatusCount, 0);
   });
 
   it('thanks the server owner when the bot joins and prefers the system channel', async () => {

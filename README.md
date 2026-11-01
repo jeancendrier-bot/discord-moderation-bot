@@ -9,11 +9,11 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 2. Dans **Bot > Privileged Gateway Intents**, activez **Server Members Intent** et **Message Content Intent**.
 3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
-5. Lancez directement la rubrique voulue, par exemple `/config antispam` ou `/config bienvenue`, puis utilisez ses boutons et sélecteurs privés.
+5. Lancez `/securitas` pour régler l’anti-raid, l’anti-spam et l’anti-liens dans un tableau unique ; utilisez `/config bienvenue` pour les autres réglages.
 6. Configurez les tickets avec `/config tickets`, puis publiez leur panneau avec `/ticket panel`.
 
 Lorsqu’il rejoint un serveur, le bot remercie l’équipe dans le salon système ou, si celui-ci n’est pas accessible, dans le premier salon textuel où il peut écrire.
-À son démarrage et lors d’un arrêt propre, il annonce aussi son état dans le salon défini avec `/config journaux` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Une perte puis une reconnexion à la passerelle Discord sont également signalées. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
+À son démarrage, lors d’un arrêt propre et après une perte ou une reconnexion à Discord, le bot annonce son état uniquement sur le serveur support [discord.gg/FXbeGGyVn](https://discord.gg/FXbeGGyVn), dans le salon défini avec `/config journaux` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Les autres serveurs ne reçoivent pas ces annonces de statut. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
 
 ## Modération
 | Commande | Fonction |
@@ -38,20 +38,21 @@ Lorsqu’il rejoint un serveur, le bot remercie l’équipe dans le salon systè
 | `/nickname user [nickname] [reason]` | Définit ou réinitialise le pseudonyme d’un membre. |
 | `/report user details` | Transmet un signalement privé à l’équipe via le salon configuré dans `/config journaux`. |
 | `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
+| `/panneau-admin` | Affiche un panneau privé « Accès Administrateur » avec un formulaire « Clés d’accès ». Le bot ne vérifie ni ne stocke la clé saisie ; la permission Administrateur de Discord protège la commande. |
+| `/giveaway lot duree gagnants [salon]` | Lance un giveaway avec bouton de participation ; réservé aux membres ayant **Gérer le serveur**. La durée va de 1 minute à 7 jours et le nombre de gagnants de 1 à 20. Par défaut, le giveaway est publié dans le salon actuel ; l’option `salon` permet de choisir un salon textuel. |
+| `/minijeu` | Ouvre un mini-jeu privé de pierre-feuille-ciseaux contre le bot, accessible à tous. |
 
 Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon** et **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son. Il reste dans le salon tant que `/vocal quitter` n’a pas été utilisée. Le salon choisi est conservé dans la configuration persistante : le bot tente de le rejoindre à son démarrage et de rétablir la connexion après une interruption. Utilisez `/vocal quitter` pour désactiver cette reconnexion. Si le bot ou l’hébergeur est arrêté, il ne peut pas rester connecté pendant l’arrêt ; il reviendra au prochain démarrage.
 
 Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Les commandes `/config bienvenue` et `/config depart` ouvrent chacune leurs propres boutons pour choisir le salon, activer l’annonce et modifier le texte. Le bouton d’aperçu envoie une version de test dans le salon d’annonce sans ping. Le ping du nouvel arrivant se règle avec un bouton dans `/config bienvenue`. Pour joindre une image, relancez la commande avec l’option `image`; pour la retirer, choisissez le bouton **Retirer l’image** ou l’option `effacer_image`.
 
 ## Protection automatique
-La commande `/config` est réservée aux membres disposant de **Gérer le serveur**. Chaque sous-commande ouvre directement son propre message privé interactif ; il n’y a pas de tableau de configuration global.
+Les commandes de configuration sont réservées aux membres disposant de **Gérer le serveur**. `/securitas` rassemble les réglages anti-raid, anti-spam et anti-liens dans un seul tableau privé. Les autres rubriques restent accessibles depuis `/config`.
 
 | Commande | Paramètres |
 |---|---|
+| `/securitas` | Tableau unique pour activer/désactiver l’anti-raid, l’anti-spam et l’anti-liens ; ajuster les seuils ; choisir le type de liens bloqués et le rôle exempté. |
 | `/config langue` | Choisir le français ou l’anglais avec un bouton. |
-| `/config antilien` | Activer/désactiver le filtre, sélectionner les liens à bloquer et choisir ou retirer un rôle exempté. |
-| `/config antispam` | Activer/désactiver la protection et ouvrir un formulaire pour ajuster ses seuils. |
-| `/config antiraid` | Activer/désactiver la protection et ouvrir un formulaire pour ajuster ses seuils. |
 | `/config verification` | Choisir le rôle accordé après réussite, activer le CAPTCHA et publier un panneau dans le salon actuel. |
 | `/config journaux` | Choisir le salon du journal dans un sélecteur ou désactiver le journal. |
 | `/config bienvenue` et `/config depart` | Choisir le salon, activer/désactiver, modifier le texte, envoyer un aperçu dans le salon défini ; l’annonce de bienvenue permet aussi de régler le ping. Les options de la commande gèrent l’image. |
@@ -74,14 +75,9 @@ Le CAPTCHA limite les inscriptions automatisées simples, mais n’est pas une p
 | `/ticket panel salon [titre] [description]` | Publie un panneau interactif avec un bouton d’ouverture et un formulaire de demande. |
 | Bouton « Ouvrir un ticket » | Ouvre un formulaire privé demandant le sujet et les détails ; crée ensuite un salon visible par le demandeur et l’équipe. |
 | Bouton « Clôturer le ticket » | Permet au demandeur ou à l’équipe autorisée de clôturer le ticket depuis son salon. |
-| `/ticket create` | Ouvre un ticket privé sans formulaire. Un seul ticket ouvert est autorisé par membre. |
-| `/ticket close` | Clôture le ticket actuel tout en conservant son historique pour l’équipe. |
-| `/ticket add user` | Autorise un membre supplémentaire à consulter et utiliser le ticket actuel. |
-| `/ticket remove user` | Retire à un membre son accès au ticket actuel. |
 
 Le bot vérifie la hiérarchie des rôles avant toute action de modération. Pour les filtres automatiques, il doit pouvoir gérer les messages et appliquer des suspensions ; son rôle doit être placé au-dessus des membres concernés. Le mode anti-raid nécessite la permission **Manage Server**.
-Pour activer les tickets, un administrateur choisit d’abord la catégorie et le rôle support dans `/config tickets`, puis publie le panneau dans un salon accessible avec `/ticket panel`. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links** ; les membres peuvent ouvrir le formulaire via le bouton.
-Le panneau `/config tickets` permet aussi de personnaliser le titre et les instructions, de publier un aperçu sans bouton fonctionnel, ou de publier immédiatement le panneau actif avec son bouton d’ouverture. `/ticket panel` utilise ce texte personnalisé par défaut ; ses options `titre` et `description` peuvent le remplacer pour une publication ponctuelle.
+Pour activer les tickets, configurez catégorie, rôle support et texte dans le tableau unique `/config tickets`, puis publiez le panneau avec `/ticket panel`. Ce tableau permet aussi de prévisualiser le panneau ou de le publier directement dans le salon actuel. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links** ; les membres ouvrent et clôturent leurs demandes avec les boutons du panneau et du ticket.
 
 ## Configuration
 | Variable | Obligatoire | Description |

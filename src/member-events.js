@@ -5,6 +5,7 @@ const eventLabels = {
   welcome: 'Bienvenue',
   leave: 'Départ',
 };
+const supportServerId = '1565306572937232417';
 
 export async function handleGuildJoined(guild) {
   const botMember = guild.members.me ?? await guild.members.fetchMe();
@@ -17,7 +18,7 @@ export async function handleGuildJoined(guild) {
     ]));
 
   const message = {
-    content: `Merci d’avoir ajouté **${guild.client.user.username}** à **${guild.name}** !\n\nPour commencer : consultez \`/aide\`, puis ouvrez la rubrique voulue avec \`/config langue\`, \`/config antispam\`, \`/config bienvenue\` ou \`/config tickets\`. Après avoir réglé les tickets, publiez leur panneau avec \`/ticket panel\`.`,
+    content: `Merci d’avoir ajouté **${guild.client.user.username}** à **${guild.name}** !\n\nPour commencer : consultez \`/aide\`, puis ouvrez la rubrique voulue avec \`/securitas\`, \`/config langue\`, \`/config bienvenue\` ou \`/config tickets\`. Après avoir réglé les tickets, publiez leur panneau avec \`/ticket panel\`.`,
     allowedMentions: { parse: [] },
   };
   for (const channel of channels) {
@@ -46,6 +47,7 @@ export async function handleBotStatus(client, state, reason = '') {
   if (!status) throw new Error(`État de bot inconnu : ${state}`);
   const results = [];
   for (const guild of client.guilds.cache.values()) {
+    if (guild.id !== supportServerId) continue;
     try {
       const settings = await getGuild(guild.id);
       const botMember = guild.members.me ?? await guild.members.fetchMe();

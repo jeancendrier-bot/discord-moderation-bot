@@ -178,6 +178,10 @@ export async function getGuild(guildId) {
     settings.voiceChannelId = null;
     changed = true;
   }
+  if (!Array.isArray(settings.giveaways)) {
+    settings.giveaways = [];
+    changed = true;
+  }
   for (const [key, defaultMessage] of [
     ['welcome', 'Bienvenue {user} sur {server} !'],
     ['leave', '{username} a quitté {server}.'],

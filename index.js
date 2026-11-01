@@ -1,9 +1,10 @@
 import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
-import { commands, handleCommand, handleConfigInteraction, handleTicketInteraction } from './src/commands.js';
+import { commands, handleAdminPanelInteraction, handleCommand, handleConfigInteraction, handleTicketInteraction } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
 import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
 import { restoreConfiguredVoice } from './src/voice.js';
 import { handleVerificationInteraction } from './src/verification.js';
+import { handleEntertainmentInteraction, restoreGiveaways } from './src/entertainment.js';
 
 const token = (process.env.DISCORD_TOKEN || '').trim();
 if (!token) {
@@ -23,6 +24,7 @@ client.once(Events.ClientReady, async (c) => {
   c.user.setActivity('la sécurité du serveur', { type: 3 });
   await handleBotStatus(c, 'online');
   await restoreRaidProtection(c).catch((err) => console.error('[moderation-bot] Restauration anti-raid impossible :', err.message));
+  await restoreGiveaways(c).catch((err) => console.error('[moderation-bot] Restauration des giveaways impossible :', err));
   for (const guild of c.guilds.cache.values()) {
     restoreConfiguredVoice(guild).catch((err) => console.error(`[moderation-bot] Restauration vocale impossible sur ${guild.id} :`, err));
   }
@@ -84,7 +86,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       || interaction.isRoleSelectMenu()
     ) {
       if (await handleVerificationInteraction(interaction)) return;
+      if (await handleAdminPanelInteraction(interaction)) return;
       if (await handleTicketInteraction(interaction)) return;
+      if (await handleEntertainmentInteraction(interaction)) return;
       await handleConfigInteraction(interaction);
       return;
     }
