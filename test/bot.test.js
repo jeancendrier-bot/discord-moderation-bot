@@ -49,14 +49,15 @@ describe('slash command definitions', () => {
 
     for (const command of commands) inspect(command, `/${command.name}`);
     const config = commands.find((command) => command.name === 'config');
-    assert.deepEqual(config.options.map((option) => option.name), ['langue', 'journaux', 'bienvenue', 'depart', 'tickets', 'verification']);
+    assert.deepEqual(config.options.map((option) => option.name), ['langue', 'journaux', 'bienvenue', 'depart', 'verification']);
     assert.equal(commands.find((command) => command.name === 'securitas').default_member_permissions, '32');
     assert.deepEqual(commands.find((command) => command.name === 'unban').options.map((option) => option.name), ['retirer', 'liste']);
     assert.ok(commands.some((command) => command.name === 'logs'));
     assert.deepEqual(commands.find((command) => command.name === 'logs').options.map((option) => option.name), ['afficher']);
     assert.ok(commands.some((command) => command.name === 'dire'));
-    assert.deepEqual(commands.find((command) => command.name === 'ticket').options.map((option) => option.name), ['panel']);
-    assert.equal(commands.find((command) => command.name === 'ticket').default_member_permissions, '32');
+    assert.deepEqual(commands.find((command) => command.name === 'tickets').options, []);
+    assert.equal(commands.find((command) => command.name === 'tickets').default_member_permissions, '32');
+    assert.equal(commands.some((command) => command.name === 'ticket'), false);
     assert.equal(commands.find((command) => command.name === 'panneau-admin').default_member_permissions, '8');
     assert.equal(commands.find((command) => command.name === 'giveaway').default_member_permissions, '32');
     assert.deepEqual(commands.find((command) => command.name === 'giveaway').options.map((option) => option.name), ['lot', 'duree', 'gagnants', 'salon']);
@@ -1026,35 +1027,30 @@ describe('moderation commands', () => {
     assert.match(interaction.response.content, /a été levé/);
   });
 
-  it('publishes a ticket panel with a persistent open-ticket button', async () => {
+  it('opens the interactive tickets dashboard with configuration and publishing controls', async () => {
     const guildId = '123456789012345687';
-    const settings = await getGuild(guildId);
-    settings.ticketCategoryId = '777777777777777778';
-    await save();
-    let panel;
-    const channel = {
-      id: '987654321098765438',
-      send: async (message) => { panel = message; },
-    };
     const interaction = {
-      commandName: 'ticket',
+      commandName: 'tickets',
       guildId,
-      guild: { channels: { fetch: async () => ({ id: settings.ticketCategoryId, type: 4 }) } },
       memberPermissions: { has: () => true },
-      options: {
-        getSubcommand: () => 'panel',
-        getChannel: () => channel,
-        getString: (name) => ({ titre: 'Contacter le support', description: 'Expliquez votre demande.' })[name] ?? null,
-      },
-      deferReply: async () => {},
-      editReply: async (message) => { interaction.response = message; },
+      reply: async (message) => { interaction.response = message; },
     };
 
     await handleCommand(interaction);
-    assert.equal(panel.embeds[0].data.title, 'Contacter le support');
-    assert.equal(panel.embeds[0].data.description, 'Expliquez votre demande.');
-    assert.equal(panel.components[0].components[0].data.custom_id, 'ticket:open');
-    assert.match(interaction.response.content, /panneau.*publié/i);
+    assert.equal(interaction.response.ephemeral, true);
+    assert.equal(interaction.response.embeds[0].data.title, '🎫 Configuration des tickets');
+    const componentIds = interaction.response.components.flatMap((row) =>
+      row.components.map((component) => component.data.custom_id),
+    );
+    assert.deepEqual(componentIds, [
+      'config:channel:ticketCategory',
+      'config:role:ticketSupport',
+      'config:clear:ticketCategory',
+      'config:clear:ticketRole',
+      'config:edit:tickets',
+      'config:preview:tickets',
+      'config:publish:tickets',
+    ]);
   });
 
   it('opens the ticket request modal from the panel button', async () => {
@@ -1269,9 +1265,10 @@ describe('member arrival and departure announcements', () => {
     assert.equal(otherGuildStatusCount, 0);
   });
 
-  it('thanks the server owner when the bot joins and prefers the system channel', async () => {
+  it('thanks the person who added the bot and lists its commands in the system channel', async () => {
     const { handleGuildJoined } = await import('../src/member-events.js');
     let sent;
+    const inviter = { id: '111111111111111111' };
     const systemChannel = {
       id: '987654321098765430',
       name: 'general',
@@ -1282,15 +1279,50 @@ describe('member arrival and departure announcements', () => {
     const guild = {
       id: '123456789012345692',
       name: 'Test server',
-      client: { user: { username: 'Moderation Bot' } },
+      client: { user: { id: '999999999999999991', username: 'Moderation Bot' } },
       members: { me: {} },
       systemChannel,
       channels: { cache: new Collection([[systemChannel.id, systemChannel]]) },
+      fetchAuditLogs: async () => ({
+        entries: new Collection([['bot-add', {
+          target: { id: '999999999999999991' },
+          executor: inviter,
+          createdTimestamp: Date.now(),
+        }]]),
+      }),
     };
 
     assert.equal(await handleGuildJoined(guild), systemChannel.id);
-    assert.match(sent.content, /Merci d’avoir ajouté \*\*Moderation Bot\*\*/);
-    assert.match(sent.content, /`\/config tickets`/);
+    assert.match(sent.embeds[0].data.description, /<@111111111111111111> d’avoir ajouté \*\*Moderation Bot\*\*/);
+    const commandFields = sent.embeds[0].data.fields;
+    assert.ok(commandFields.some((field) => field.value.includes('**/tickets**')));
+    assert.ok(commandFields.some((field) => field.value.includes('**/giveaway**')));
+    assert.ok(commandFields.some((field) => field.value.includes('**/minijeu**')));
+    assert.deepEqual(sent.allowedMentions, { users: [inviter.id] });
+  });
+
+  it('still sends the welcome and full command list when audit log access is unavailable', async () => {
+    const { handleGuildJoined } = await import('../src/member-events.js');
+    let sent;
+    const systemChannel = {
+      id: '987654321098765430',
+      isTextBased: () => true,
+      permissionsFor: () => ({ has: () => true }),
+      send: async (message) => { sent = message; },
+    };
+    const guild = {
+      id: '123456789012345692',
+      name: 'Test server',
+      client: { user: { id: '999999999999999991', username: 'Moderation Bot' } },
+      members: { me: {} },
+      systemChannel,
+      channels: { cache: new Collection([[systemChannel.id, systemChannel]]) },
+      fetchAuditLogs: async () => { throw Object.assign(new Error('Missing permission'), { code: 50013 }); },
+    };
+
+    assert.equal(await handleGuildJoined(guild), systemChannel.id);
+    assert.match(sent.embeds[0].data.description, /Merci à toute l’équipe d’avoir ajouté/);
+    assert.ok(sent.embeds[0].data.fields.some((field) => field.value.includes('**/aide**')));
     assert.deepEqual(sent.allowedMentions, { parse: [] });
   });
 

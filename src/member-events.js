@@ -1,4 +1,11 @@
-import { AttachmentBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import {
+  ApplicationCommandOptionType,
+  AttachmentBuilder,
+  AuditLogEvent,
+  EmbedBuilder,
+  PermissionFlagsBits,
+} from 'discord.js';
+import { commands } from './commands.js';
 import { getGuild } from './store.js';
 
 const eventLabels = {
@@ -6,6 +13,42 @@ const eventLabels = {
   leave: 'Départ',
 };
 const supportServerId = '1565306572937232417';
+
+async function findBotInviter(guild) {
+  try {
+    const auditLogs = await guild.fetchAuditLogs({ type: AuditLogEvent.BotAdd, limit: 10 });
+    const entry = auditLogs.entries.find((candidate) =>
+      candidate.target?.id === guild.client.user.id
+      && Date.now() - candidate.createdTimestamp < 5 * 60_000,
+    );
+    return entry?.executor ?? null;
+  } catch (error) {
+    console.warn(`[moderation-bot] Impossible d’identifier la personne ayant ajouté le bot sur ${guild.name} :`, error);
+    return null;
+  }
+}
+
+function commandListFields() {
+  const lines = commands.map((command) => {
+    const subcommands = command.options
+      .filter((option) => option.type === ApplicationCommandOptionType.Subcommand)
+      .map((option) => option.name);
+    return subcommands.length
+      ? `**/${command.name}** : ${subcommands.join(', ')}`
+      : `**/${command.name}**`;
+  });
+  const fields = [];
+  let value = '';
+  for (const line of lines) {
+    if (value && value.length + line.length + 1 > 1024) {
+      fields.push({ name: fields.length ? 'Commandes disponibles (suite)' : 'Commandes disponibles', value });
+      value = '';
+    }
+    value += `${value ? '\n' : ''}${line}`;
+  }
+  if (value) fields.push({ name: fields.length ? 'Commandes disponibles (suite)' : 'Commandes disponibles', value });
+  return fields;
+}
 
 export async function handleGuildJoined(guild) {
   const botMember = guild.members.me ?? await guild.members.fetchMe();
@@ -17,9 +60,22 @@ export async function handleGuildJoined(guild) {
       PermissionFlagsBits.SendMessages,
     ]));
 
+  const inviter = await findBotInviter(guild);
+  const thanks = inviter
+    ? `Merci <@${inviter.id}> d’avoir ajouté **${guild.client.user.username}** à **${guild.name}** !`
+    : `Merci à toute l’équipe d’avoir ajouté **${guild.client.user.username}** à **${guild.name}** !`;
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('Merci de m’avoir ajouté !')
+    .setDescription(
+      `${thanks}\n\n`
+      + 'Voici mes commandes slash disponibles. Utilisez `/aide` dans Discord pour obtenir leur description et les permissions requises.',
+    )
+    .addFields(commandListFields())
+    .setTimestamp();
   const message = {
-    content: `Merci d’avoir ajouté **${guild.client.user.username}** à **${guild.name}** !\n\nPour commencer : consultez \`/aide\`, puis ouvrez la rubrique voulue avec \`/securitas\`, \`/config langue\`, \`/config bienvenue\` ou \`/config tickets\`. Après avoir réglé les tickets, publiez leur panneau avec \`/ticket panel\`.`,
-    allowedMentions: { parse: [] },
+    embeds: [embed],
+    allowedMentions: inviter ? { users: [inviter.id] } : { parse: [] },
   };
   for (const channel of channels) {
     try {

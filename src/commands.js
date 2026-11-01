@@ -83,13 +83,8 @@ export const commands = [
     .addSubcommand((o) => o.setName('journaux').setDescription('Choisir le salon du journal ou le désactiver'))
     .addSubcommand((option) => announcementConfiguration(option, 'welcome'))
     .addSubcommand((option) => announcementConfiguration(option, 'leave'))
-    .addSubcommand((o) => o.setName('tickets').setDescription('Configurer les tickets, leur équipe et le texte du panneau'))
     .addSubcommand((o) => o.setName('verification').setDescription('Configurer la vérification CAPTCHA des nouveaux membres')),
-  new SlashCommandBuilder().setName('ticket').setDescription('Gérer les demandes d’assistance dans des salons privés').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((o) => o.setName('panel').setDescription('Publier un panneau pour ouvrir des tickets privés')
-      .addChannelOption((option) => option.setName('salon').setDescription('Salon dans lequel publier le panneau').addChannelTypes(ChannelType.GuildText).setRequired(true))
-      .addStringOption((option) => option.setName('titre').setDescription('Titre personnalisé du panneau').setMaxLength(100))
-      .addStringOption((option) => option.setName('description').setDescription('Instructions affichées au-dessus du bouton').setMaxLength(1000))),
+  new SlashCommandBuilder().setName('tickets').setDescription('Ouvrir le tableau interactif de gestion des tickets').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
 const COLORS = { warn: 0xfee75c, timeout: 0xe67e22, untimeout: 0x57f287, kick: 0xed4245, ban: 0x992d22, unban: 0x57f287, purge: 0x5865f2, clearwarnings: 0x57f287, lock: 0xed4245, unlock: 0x57f287, nickname: 0x5865f2 };
@@ -116,7 +111,7 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   securitas: PermissionFlagsBits.ManageGuild,
   giveaway: PermissionFlagsBits.ManageGuild,
   config: PermissionFlagsBits.ManageGuild,
-  ticket: PermissionFlagsBits.ManageGuild,
+  tickets: PermissionFlagsBits.ManageGuild,
 };
 
 async function log(interaction, settings, action, target, details) {
@@ -592,7 +587,7 @@ export async function handleCommand(interaction) {
       {
         name: 'Configuration et assistance',
         permission: 'Gérer le serveur pour la configuration ; les tickets dépendent de leur configuration.',
-        commands: ['securitas', 'config', 'ticket', 'vocal'],
+        commands: ['securitas', 'config', 'tickets', 'vocal'],
       },
       {
         name: 'Giveaway et mini-jeu',
@@ -628,6 +623,15 @@ export async function handleCommand(interaction) {
     await interaction.reply({
       embeds: [warBoubouEmbed(settings)],
       components: warBoubouComponents(settings),
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  if (name === 'tickets') {
+    await interaction.reply({
+      embeds: [configEmbed(settings, 'tickets')],
+      components: configComponents(settings, 'tickets'),
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -788,7 +792,6 @@ export async function handleCommand(interaction) {
       journaux: 'logs',
       bienvenue: 'welcome',
       depart: 'leave',
-      tickets: 'tickets',
       verification: 'verification',
     };
     const key = configKeys[subcommand];
@@ -877,30 +880,6 @@ export async function handleCommand(interaction) {
     });
     await interaction.editReply({ content: name === 'lock' ? 'Le salon a été verrouillé. Les membres ne peuvent plus y envoyer de messages.' : 'Le salon a été déverrouillé. Les membres peuvent de nouveau y envoyer des messages.' });
     await log(interaction, settings, name, null, `<#${interaction.channelId}>`);
-    return;
-  }
-
-  if (name === 'ticket') {
-    if (!settings.ticketCategoryId) {
-      await interaction.reply({ content: 'Configurez d’abord les tickets avec `/config tickets`.', ephemeral: true });
-      return;
-    }
-    await interaction.deferReply({ ephemeral: true });
-    const category = await fetchTicketCategory(interaction.guild, settings.ticketCategoryId);
-    if (!category) {
-      await interaction.editReply({ content: 'La catégorie enregistrée est introuvable. Choisissez-en une nouvelle avec `/config tickets`.' });
-      return;
-    }
-    const channel = interaction.options.getChannel('salon', true);
-    const title = interaction.options.getString('titre') ?? settings.ticketPanelTitle;
-    const description = interaction.options.getString('description')
-      ?? settings.ticketPanelDescription;
-    await channel.send({
-      embeds: [ticketPanelEmbed({ ticketPanelTitle: title, ticketPanelDescription: description })],
-      components: ticketPanelComponents(),
-      allowedMentions: { parse: [] },
-    });
-    await interaction.editReply({ content: `Le panneau de tickets a été publié dans <#${channel.id}>.` });
     return;
   }
 
@@ -1171,7 +1150,7 @@ export async function handleTicketInteraction(interaction) {
     created: `Votre ticket a été créé : <#${result.channel.id}>.`,
     existing: `Vous avez déjà un ticket ouvert : <#${result.channel.id}>.`,
     pending: 'La création de votre ticket est déjà en cours. Veuillez patienter quelques secondes.',
-    unconfigured: 'Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/config tickets`.',
+    unconfigured: 'Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/tickets`.',
   };
   await interaction.editReply({ content: response[result.status] });
   return true;

@@ -10,9 +10,9 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
 5. Lancez `/securitas` pour régler l’anti-raid, l’anti-spam et l’anti-liens dans un tableau unique ; utilisez `/config bienvenue` pour les autres réglages.
-6. Configurez les tickets avec `/config tickets`, puis publiez leur panneau avec `/ticket panel`.
+6. Configurez et publiez le panneau de tickets depuis le tableau interactif `/tickets`.
 
-Lorsqu’il rejoint un serveur, le bot remercie l’équipe dans le salon système ou, si celui-ci n’est pas accessible, dans le premier salon textuel où il peut écrire.
+Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (si elle peut être identifiée dans les journaux d’audit), puis affiche toutes ses commandes slash dans le salon système ou, si celui-ci n’est pas accessible, dans le premier salon textuel où il peut écrire. La permission **View Audit Log** permet d’identifier l’invitant ; sans elle, le bot remercie toute l’équipe sans mentionner quelqu’un par erreur.
 À son démarrage, lors d’un arrêt propre et après une perte ou une reconnexion à Discord, le bot annonce son état uniquement sur le serveur support [discord.gg/FXbeGGyVn](https://discord.gg/FXbeGGyVn), dans le salon défini avec `/config journaux` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Les autres serveurs ne reçoivent pas ces annonces de statut. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
 
 ## Modération
@@ -56,7 +56,7 @@ Les commandes de configuration sont réservées aux membres disposant de **Gére
 | `/config verification` | Choisir le rôle accordé après réussite, activer le CAPTCHA et publier un panneau dans le salon actuel. |
 | `/config journaux` | Choisir le salon du journal dans un sélecteur ou désactiver le journal. |
 | `/config bienvenue` et `/config depart` | Choisir le salon, activer/désactiver, modifier le texte, envoyer un aperçu dans le salon défini ; l’annonce de bienvenue permet aussi de régler le ping. Les options de la commande gèrent l’image. |
-| `/config tickets` | Choisir la catégorie et le rôle support, modifier le titre et les instructions, afficher un aperçu ou publier le panneau directement. |
+| `/tickets` | Tableau interactif pour choisir la catégorie et le rôle support, modifier le titre et les instructions, afficher un aperçu ou publier le panneau directement. |
 
 Les modifications sont enregistrées immédiatement. Les notifications de détection sont envoyées dans le salon défini avec `/config journaux`. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
 
@@ -72,12 +72,12 @@ Le CAPTCHA limite les inscriptions automatisées simples, mais n’est pas une p
 ## Tickets
 | Commande | Fonction |
 |---|---|
-| `/ticket panel salon [titre] [description]` | Publie un panneau interactif avec un bouton d’ouverture et un formulaire de demande. |
+| `/tickets` | Configure et publie le panneau interactif avec un bouton d’ouverture et un formulaire de demande. |
 | Bouton « Ouvrir un ticket » | Ouvre un formulaire privé demandant le sujet et les détails ; crée ensuite un salon visible par le demandeur et l’équipe. |
 | Bouton « Clôturer le ticket » | Permet au demandeur ou à l’équipe autorisée de clôturer le ticket depuis son salon. |
 
 Le bot vérifie la hiérarchie des rôles avant toute action de modération. Pour les filtres automatiques, il doit pouvoir gérer les messages et appliquer des suspensions ; son rôle doit être placé au-dessus des membres concernés. Le mode anti-raid nécessite la permission **Manage Server**.
-Pour activer les tickets, configurez catégorie, rôle support et texte dans le tableau unique `/config tickets`, puis publiez le panneau avec `/ticket panel`. Ce tableau permet aussi de prévisualiser le panneau ou de le publier directement dans le salon actuel. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links** ; les membres ouvrent et clôturent leurs demandes avec les boutons du panneau et du ticket.
+Pour activer les tickets, ouvrez le tableau unique `/tickets` : choisissez la catégorie et le rôle support, modifiez le texte, prévisualisez puis publiez le panneau dans le salon actuel. Les membres ouvrent et clôturent leurs demandes avec les boutons du panneau et du ticket. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links**.
 
 ## Configuration
 | Variable | Obligatoire | Description |
