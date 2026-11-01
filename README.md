@@ -7,7 +7,7 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 ## Installation
 1. Créez une application et un bot dans le [portail développeur Discord](https://discord.com/developers/applications), puis récupérez son jeton.
 2. Dans **Bot > Privileged Gateway Intents**, activez **Server Members Intent** et **Message Content Intent**.
-3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
+3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Send Polls**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
 5. Lancez `/securitas` pour configurer uniquement les protections anti-raid, anti-spam et anti-liens, puis `/gestion` pour les réglages de bienvenue, départ, langue et journaux.
 6. Configurez et publiez le panneau de tickets depuis le tableau interactif `/tickets`.
@@ -36,20 +36,23 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 | `/vocal rejoindre salon` | Connecte le bot au salon vocal choisi (sans musique ni diffusion audio) et mémorise ce choix pour le prochain démarrage. |
 | `/vocal quitter` | Déconnecte le bot et annule les reconnexions automatiques. |
 | `/nickname user [nickname] [reason]` | Définit ou réinitialise le pseudonyme d’un membre. |
-| `/report user details` | Transmet un signalement privé à l’équipe via le salon configuré depuis le panneau **Journal de modération** de `/gestion`. |
 | `/serverinfo` | Affiche le nombre de membres, les salons, la date de création et le propriétaire du serveur. |
 | `/userinfo [user]` | Affiche l’identifiant, les dates de compte/arrivée et les rôles d’un membre. |
+| `/avatar [user]` | Affiche l’avatar d’un membre en grand et fournit son lien. |
+| `/sondage question choix1 choix2 duree [choix3] [choix4] [choix5]` | Publie un sondage natif Discord dans le salon actuel ; durée de 1 à 768 heures. Le bot doit avoir **Send Polls**. |
 | `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
 | `/giveaway lot duree gagnants [salon]` | Lance un giveaway avec bouton de participation ; réservé aux membres ayant **Gérer le serveur**. La durée va de 1 minute à 7 jours et le nombre de gagnants de 1 à 20. Par défaut, le giveaway est publié dans le salon actuel ; l’option `salon` permet de choisir un salon textuel. |
 | `/minijeu` | Ouvre un mini-jeu privé de pierre-feuille-ciseaux contre le bot, accessible à tous. |
 | `/quiz` | Lance une question privée de culture générale à choix multiples ; une nouvelle question est tirée à chaque utilisation. |
+| `/de [nombre] [faces]` | Lance de 1 à 10 dés, avec 2 à 100 faces par dé. |
+| `/pileouface` | Tire à pile ou face. |
 
 Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon** et **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son. Il reste dans le salon tant que `/vocal quitter` n’a pas été utilisée. Le salon choisi est conservé dans la configuration persistante : le bot tente de le rejoindre à son démarrage et de rétablir la connexion après une interruption. Utilisez `/vocal quitter` pour désactiver cette reconnexion. Si le bot ou l’hébergeur est arrêté, il ne peut pas rester connecté pendant l’arrêt ; il reviendra au prochain démarrage.
 
 Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Dans `/gestion`, choisissez **Bienvenue** ou **Départ** pour ouvrir les boutons de réglage du salon, du texte, de l’activation et de l’aperçu. Le ping du nouvel arrivant se règle dans le panneau **Bienvenue**. Pour joindre ou retirer une image, lancez `/gestion` avec l’option `annonce`, puis l’option `image` ou `effacer_image`.
 
 ## Protection automatique
-Les commandes de configuration sont réservées aux membres disposant de **Gérer le serveur**. `/securitas` affiche uniquement les protections automatiques. `/gestion` affiche les réglages de bienvenue, départ, langue et journaux. `/verification` configure séparément le CAPTCHA ; `/tickets` reste indépendant.
+Les commandes de configuration sont réservées aux membres disposant de **Gérer le serveur**. Les panneaux privés de `/aide`, `/securitas`, `/gestion`, `/verification` et `/tickets` ne peuvent être utilisés que par la personne qui les a ouverts. Si un panneau ne reconnaît pas son propriétaire, relancez sa commande. Les panneaux publics de tickets et de CAPTCHA restent utilisables par les membres concernés. `/securitas` affiche uniquement les protections automatiques. `/gestion` affiche les réglages de bienvenue, départ, langue et journaux. `/verification` configure séparément le CAPTCHA ; `/tickets` reste indépendant.
 
 | Commande | Paramètres |
 |---|---|

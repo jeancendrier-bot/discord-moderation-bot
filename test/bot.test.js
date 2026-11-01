@@ -13,6 +13,7 @@ let removeMemberEventImage;
 let commands;
 let handleCommand;
 let handleConfigInteraction;
+let rawHandleConfigInteraction;
 let handleHelpInteraction;
 let handleTicketInteraction;
 let handleVerificationInteraction;
@@ -25,6 +26,20 @@ before(async () => {
   process.env.CONFIG_PATH = join(dataDirectory, 'config.json');
   ({ getGuild, removeMemberEventImage, save, saveMemberEventImage } = await import('../src/store.js'));
   ({ commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction } = await import('../src/commands.js'));
+  rawHandleConfigInteraction = handleConfigInteraction;
+  const configHandler = handleConfigInteraction;
+  handleConfigInteraction = async (interaction) => {
+    interaction.user ??= { id: '123456789012345000' };
+    const ownerId = interaction.message?.interactionMetadata?.user?.id
+      ?? interaction.message?.interaction?.user?.id;
+    if (!ownerId) {
+      interaction.message = {
+        ...interaction.message,
+        interactionMetadata: { user: { id: interaction.user.id } },
+      };
+    }
+    return configHandler(interaction);
+  };
   ({ handleVerificationInteraction } = await import('../src/verification.js'));
   ({ handleEntertainmentInteraction, restoreGiveaways } = await import('../src/entertainment.js'));
   security = await import('../src/security.js');
@@ -37,15 +52,16 @@ after(async () => {
 describe('slash command definitions', () => {
   it('serialize unique commands with valid Discord descriptions', async () => {
     const names = commands.map((command) => command.name);
-    assert.equal(names.length, 28);
+    assert.equal(names.length, 31);
     assert.equal(new Set(names).size, names.length);
     for (const commandName of [
       'warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout',
       'kick', 'ban', 'unban', 'purge', 'slowmode', 'lock', 'unlock',
-      'dire', 'nickname', 'report',
+      'dire', 'nickname',
     ]) {
       assert.ok(commands.some((command) => command.name === commandName), `/${commandName} remains a direct command`);
     }
+    assert.equal(commands.some((command) => command.name === 'report'), false);
 
     const inspect = (option, path) => {
       assert.ok(option.name, `${path} has a name`);
@@ -75,6 +91,10 @@ describe('slash command definitions', () => {
     assert.deepEqual(commands.find((command) => command.name === 'giveaway').options.map((option) => option.name), ['lot', 'duree', 'gagnants', 'salon']);
     assert.ok(commands.some((command) => command.name === 'minijeu'));
     assert.ok(commands.some((command) => command.name === 'quiz'));
+    assert.ok(commands.some((command) => command.name === 'avatar'));
+    assert.ok(commands.some((command) => command.name === 'sondage'));
+    assert.ok(commands.some((command) => command.name === 'de'));
+    assert.ok(commands.some((command) => command.name === 'pileouface'));
     const helpInteraction = { commandName: 'aide', reply: async (message) => { helpInteraction.response = message; } };
     await handleCommand(helpInteraction);
     assert.equal(helpInteraction.response.ephemeral, true);
@@ -90,6 +110,8 @@ describe('slash command definitions', () => {
       isStringSelectMenu: () => true,
       customId: 'help:category',
       values: ['members'],
+      user: { id: '123456789012345000' },
+      message: { interactionMetadata: { user: { id: '123456789012345000' } } },
       update: async (response) => { interaction.response = response; },
       reply: async (response) => { interaction.response = response; },
     };
@@ -97,12 +119,25 @@ describe('slash command definitions', () => {
     assert.equal(interaction.response.embeds[0].data.title, '📚 Modération des membres');
     assert.match(interaction.response.embeds[0].data.description, /\/warn/);
     assert.match(interaction.response.embeds[0].data.description, /\/ban/);
-    assert.match(interaction.response.embeds[0].data.description, /\/report/);
     assert.equal(interaction.response.components[0].components[0].data.custom_id, 'help:category');
 
     interaction.values = ['unknown'];
     await handleHelpInteraction(interaction);
     assert.match(interaction.response.content, /catégorie de commandes n’existe pas/);
+  });
+
+  it('prevents another user from interacting with a private help panel', async () => {
+    const interaction = {
+      isStringSelectMenu: () => true,
+      customId: 'help:category',
+      values: ['members'],
+      user: { id: '123456789012345001' },
+      message: { interactionMetadata: { user: { id: '123456789012345000' } } },
+      reply: async (response) => { interaction.response = response; },
+    };
+    assert.equal(await handleHelpInteraction(interaction), true);
+    assert.equal(interaction.response.ephemeral, true);
+    assert.match(interaction.response.content, /Seule la personne qui a ouvert/);
   });
 
   it('defines an administrator-only voice join and leave command', () => {
@@ -176,6 +211,71 @@ describe('slash command definitions', () => {
     await handleCommand(userInfo);
     assert.equal(userInfo.response.embeds[0].data.title, '👤 TestUser');
     assert.equal(userInfo.response.allowedMentions.parse.length, 0);
+  });
+
+  it('runs avatar, poll and quick game commands', async () => {
+    const user = {
+      id: '222222222222222226',
+      username: 'TestUser',
+      tag: 'TestUser#0001',
+      displayAvatarURL: () => 'https://cdn.discordapp.com/avatars/1/avatar.png',
+    };
+    const avatar = {
+      commandName: 'avatar',
+      guildId: '123456789012345647',
+      user,
+      options: { getUser: () => null },
+      reply: async (response) => { avatar.response = response; },
+    };
+    await handleCommand(avatar);
+    assert.equal(avatar.response.embeds[0].data.image.url, user.displayAvatarURL());
+
+    let pollPayload;
+    const pollChannel = {
+      isTextBased: () => true,
+      send: async (payload) => { pollPayload = payload; },
+    };
+    const poll = {
+      commandName: 'sondage',
+      guildId: '123456789012345647',
+      channel: pollChannel,
+      channelId: '987654321098765430',
+      options: {
+        getString: (name) => ({
+          question: 'Quel jeu choisir ?',
+          choix1: 'Quiz',
+          choix2: 'Dé',
+          choix3: 'Pile ou face',
+          choix4: null,
+          choix5: null,
+        })[name],
+        getInteger: () => 24,
+      },
+      deferReply: async () => {},
+      editReply: async (response) => { poll.response = response; },
+    };
+    await handleCommand(poll);
+    assert.equal(pollPayload.poll.question.text, 'Quel jeu choisir ?');
+    assert.deepEqual(pollPayload.poll.answers.map((answer) => answer.text), ['Quiz', 'Dé', 'Pile ou face']);
+    assert.equal(pollPayload.poll.duration, 24);
+    assert.equal(poll.response.content, 'Le sondage a été publié dans <#987654321098765430>.');
+
+    const die = {
+      commandName: 'de',
+      guildId: '123456789012345647',
+      options: { getInteger: (name) => ({ nombre: 2, faces: 6 })[name] },
+      reply: async (response) => { die.response = response; },
+    };
+    await handleCommand(die);
+    assert.match(die.response.content, /🎲 Résultat : \d \+ \d = \*\*\d+\*\*/);
+
+    const coin = {
+      commandName: 'pileouface',
+      guildId: '123456789012345647',
+      reply: async (response) => { coin.response = response; },
+    };
+    await handleCommand(coin);
+    assert.match(coin.response.content, /Pile|Face/);
   });
 
   it('smoke-tests the direct moderation and channel command handlers', async () => {
@@ -545,40 +645,6 @@ describe('slash command definitions', () => {
     assert.match(interaction.response.content, /avertissement n° 1.*retiré/i);
   });
 
-  it('sends member reports to the configured moderation log without pinging users', async () => {
-    const guildId = '123456789012345697';
-    const reporter = { id: '111111111111111111' };
-    const target = { id: '222222222222222222', tag: 'reported#0001' };
-    const settings = await getGuild(guildId);
-    settings.logChannelId = '333333333333333333';
-    await save();
-    let report;
-    const channel = {
-      isTextBased: () => true,
-      send: async (message) => { report = message; },
-    };
-    const interaction = {
-      commandName: 'report',
-      guildId,
-      user: reporter,
-      guild: {
-        members: { fetch: async () => ({ id: target.id }) },
-        channels: { fetch: async () => channel },
-      },
-      options: {
-        getUser: () => target,
-        getString: () => 'Comportement inapproprié',
-      },
-      deferReply: async () => {},
-      editReply: async (message) => { interaction.response = message; },
-    };
-
-    await handleCommand(interaction);
-    assert.equal(report.embeds[0].data.title, 'Nouveau signalement');
-    assert.equal(report.embeds[0].data.fields[2].value, 'Comportement inapproprié');
-    assert.deepEqual(report.allowedMentions, { parse: [] });
-    assert.match(interaction.response.content, /transmis à l’équipe/);
-  });
 });
 
 describe('CAPTCHA verification', () => {
@@ -669,6 +735,75 @@ describe('moderation commands', () => {
   });
 
   describe('per-command interactive configuration', () => {
+    it('rejects configuration controls used by anyone other than the panel owner', async () => {
+      const guildId = '123456789012345680';
+      const settings = await getGuild(guildId);
+      assert.equal(settings.security.antiSpam.enabled, false);
+      const interaction = {
+        isButton: () => true,
+        isModalSubmit: () => false,
+        isStringSelectMenu: () => false,
+        isChannelSelectMenu: () => false,
+        isRoleSelectMenu: () => false,
+        customId: 'config:set:antiSpam:toggle',
+        user: { id: '123456789012345001' },
+        message: { interactionMetadata: { user: { id: '123456789012345000' } } },
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        reply: async (response) => { interaction.response = response; },
+      };
+
+      assert.equal(await handleConfigInteraction(interaction), true);
+      assert.equal(interaction.response.ephemeral, true);
+      assert.match(interaction.response.content, /Seule la personne qui a ouvert/);
+      assert.equal((await getGuild(guildId)).security.antiSpam.enabled, false);
+    });
+
+    it('rejects configuration controls when the panel owner cannot be verified', async () => {
+      const interaction = {
+        isButton: () => true,
+        isModalSubmit: () => false,
+        isStringSelectMenu: () => false,
+        isChannelSelectMenu: () => false,
+        isRoleSelectMenu: () => false,
+        customId: 'config:set:antiSpam:toggle',
+        user: { id: '123456789012345000' },
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId: '123456789012345681',
+        reply: async (response) => { interaction.response = response; },
+      };
+
+      assert.equal(await rawHandleConfigInteraction(interaction), true);
+      assert.equal(interaction.response.ephemeral, true);
+      assert.match(interaction.response.content, /Seule la personne qui a ouvert/);
+    });
+
+    it('rejects a configuration modal submitted by someone other than its opener', async () => {
+      const guildId = '123456789012345682';
+      const settings = await getGuild(guildId);
+      const modal = {
+        isButton: () => false,
+        isModalSubmit: () => true,
+        isStringSelectMenu: () => false,
+        isChannelSelectMenu: () => false,
+        isRoleSelectMenu: () => false,
+        customId: 'config:save:antiSpam:123456789012345000',
+        user: { id: '123456789012345001' },
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        fields: { getTextInputValue: () => '8' },
+        reply: async (response) => { modal.response = response; },
+      };
+
+      assert.equal(await rawHandleConfigInteraction(modal), true);
+      assert.equal(modal.response.ephemeral, true);
+      assert.match(modal.response.content, /Seule la personne qui a ouvert/);
+      assert.equal((await getGuild(guildId)).security.antiSpam.maxMessages, settings.security.antiSpam.maxMessages);
+    });
+
     it('updates anti-raid, anti-spam and anti-link settings from the Securitas dashboard', async () => {
       const guildId = '123456789012345659';
       const makeInteraction = (type, customId, extra = {}) => ({
@@ -703,10 +838,10 @@ describe('moderation commands', () => {
         showModal: async (modal) => { edit.modal = modal; },
       });
       assert.equal(await handleConfigInteraction(edit), true);
-      assert.equal(edit.modal.data.custom_id, 'warboubou:save:antiSpam');
+      assert.equal(edit.modal.data.custom_id, 'warboubou:save:antiSpam:123456789012345000');
 
       const values = { maximum: '7', interval: '12', timeout: '4' };
-      const submit = makeInteraction('modal', 'warboubou:save:antiSpam', {
+      const submit = makeInteraction('modal', 'warboubou:save:antiSpam:123456789012345000', {
         fields: { getTextInputValue: (key) => values[key] },
         update: async (response) => { submit.response = response; },
       });
@@ -736,7 +871,7 @@ describe('moderation commands', () => {
         showModal: async (modal) => { button.modal = modal; },
       };
       assert.equal(await handleConfigInteraction(button), true);
-      assert.equal(button.modal.data.custom_id, 'config:save:tickets');
+      assert.equal(button.modal.data.custom_id, 'config:save:tickets:123456789012345000');
       const values = {
         title: 'Assistance aux membres',
         description: 'Décrivez votre demande et notre équipe vous répondra en privé.',
@@ -744,7 +879,7 @@ describe('moderation commands', () => {
       const modal = {
         isButton: () => false,
         isModalSubmit: () => true,
-        customId: 'config:save:tickets',
+        customId: 'config:save:tickets:123456789012345000',
         inGuild: () => true,
         memberPermissions: { has: () => true },
         guildId,
@@ -945,13 +1080,13 @@ describe('moderation commands', () => {
         showModal: async (modal) => { button.modal = modal; },
       };
       assert.equal(await handleConfigInteraction(button), true);
-      assert.equal(button.modal.data.custom_id, 'config:save:antiSpam');
+      assert.equal(button.modal.data.custom_id, 'config:save:antiSpam:123456789012345000');
 
       const values = { maximum: '7', interval: '12', timeout: '4' };
       const modal = {
         isButton: () => false,
         isModalSubmit: () => true,
-        customId: 'config:save:antiSpam',
+        customId: 'config:save:antiSpam:123456789012345000',
         inGuild: () => true,
         memberPermissions: { has: () => true },
         guildId,
@@ -1798,5 +1933,32 @@ describe('automatic protections', () => {
     assert.equal(supportAlerts[0].embeds[0].data.title, '🚨 Alerte anti-raid');
     assert.match(supportAlerts[0].embeds[0].data.description, /Protected server/);
     assert.deepEqual(supportAlerts[0].allowedMentions, { parse: [] });
+  });
+
+  it('retries restoring anti-raid verification after a startup restore failure', async () => {
+    const guildId = '123456789012345677';
+    const settings = await getGuild(guildId);
+    settings.security.raidProtection = {
+      originalVerificationLevel: GuildVerificationLevel.Low,
+      restoreAt: Date.now() - 1,
+    };
+    await save();
+
+    const guild = {
+      id: guildId,
+      name: 'Protected server',
+      client: { user: { tag: 'ModerationBot#0001' }, guilds: { cache: new Collection() } },
+      setVerificationLevel: async () => {
+        throw new Error('Missing permission');
+      },
+    };
+    const client = {
+      guilds: { cache: new Collection([[guildId, guild]]) },
+    };
+
+    await security.restoreRaidProtection(client);
+    assert.ok(settings.security.raidProtection.restoreAt > Date.now());
+    const persisted = JSON.parse(await readFile(process.env.CONFIG_PATH, 'utf8'));
+    assert.ok(persisted.guilds[guildId].security.raidProtection.restoreAt > Date.now());
   });
 });

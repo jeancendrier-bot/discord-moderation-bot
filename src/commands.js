@@ -14,6 +14,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
+import { randomInt } from 'node:crypto';
 import { getGuild, removeMemberEventImage, save, saveMemberEventImage } from './store.js';
 import { connectConfiguredVoice, disconnectConfiguredVoice } from './voice.js';
 import { startGiveaway, startMiniGame, startQuiz } from './entertainment.js';
@@ -52,12 +53,23 @@ export const commands = [
     .addChannelOption((o) => o.setName('salon').setDescription('Salon de destination ; par défaut, le salon actuel').addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName('nickname').setDescription('Définir ou réinitialiser le pseudonyme d’un membre').setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
     .addUserOption(user).addStringOption((o) => o.setName('nickname').setDescription('Nouveau pseudonyme ; laisser vide pour rétablir celui d’origine').setMaxLength(32)).addStringOption(reason),
-  new SlashCommandBuilder().setName('report').setDescription('Signaler un membre à l’équipe de modération')
-    .addUserOption((o) => o.setName('user').setDescription('Membre à signaler').setRequired(true))
-    .addStringOption((o) => o.setName('details').setDescription('Décrivez clairement le problème').setMaxLength(800).setRequired(true)),
   new SlashCommandBuilder().setName('serverinfo').setDescription('Afficher les informations principales du serveur'),
   new SlashCommandBuilder().setName('userinfo').setDescription('Afficher les informations publiques d’un membre')
     .addUserOption((o) => o.setName('user').setDescription('Membre à consulter ; par défaut, vous-même')),
+  new SlashCommandBuilder().setName('avatar').setDescription('Afficher l’avatar d’un membre en grand')
+    .addUserOption((o) => o.setName('user').setDescription('Membre concerné ; par défaut, vous-même')),
+  new SlashCommandBuilder().setName('sondage').setDescription('Créer un sondage natif Discord dans le salon actuel')
+    .addStringOption((o) => o.setName('question').setDescription('Question du sondage').setMaxLength(300).setRequired(true))
+    .addStringOption((o) => o.setName('choix1').setDescription('Première réponse').setMaxLength(55).setRequired(true))
+    .addStringOption((o) => o.setName('choix2').setDescription('Deuxième réponse').setMaxLength(55).setRequired(true))
+    .addIntegerOption((o) => o.setName('duree').setDescription('Durée en heures (1 à 768)').setMinValue(1).setMaxValue(768).setRequired(true))
+    .addStringOption((o) => o.setName('choix3').setDescription('Troisième réponse (facultative)').setMaxLength(55))
+    .addStringOption((o) => o.setName('choix4').setDescription('Quatrième réponse (facultative)').setMaxLength(55))
+    .addStringOption((o) => o.setName('choix5').setDescription('Cinquième réponse (facultative)').setMaxLength(55)),
+  new SlashCommandBuilder().setName('de').setDescription('Lancer un ou plusieurs dés')
+    .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés (1 à 10)').setMinValue(1).setMaxValue(10))
+    .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces par dé (2 à 100)').setMinValue(2).setMaxValue(100)),
+  new SlashCommandBuilder().setName('pileouface').setDescription('Jouer à pile ou face'),
   new SlashCommandBuilder().setName('vocal').setDescription('Gérer la connexion vocale persistante du bot').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('rejoindre').setDescription('Rejoindre et mémoriser le salon vocal')
       .addChannelOption((option) => option.setName('salon').setDescription('Salon vocal à rejoindre').addChannelTypes(ChannelType.GuildVoice).setRequired(true)))
@@ -112,16 +124,16 @@ const HELP_GROUPS = [
   {
     name: 'Modération des membres',
     value: 'members',
-    description: 'Avertissements, suspensions, exclusions, bannissements et signalements.',
+    description: 'Avertissements, suspensions, exclusions et bannissements.',
     permission: 'La permission requise est indiquée par Discord pour chaque commande.',
-    commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'nickname', 'report'],
+    commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'nickname'],
   },
   {
-    name: 'Salons et journal',
+    name: 'Salons et outils',
     value: 'channels',
-    description: 'Nettoyage, contrôle des salons et historique de modération.',
+    description: 'Nettoyage, contrôle des salons, sondages et informations.',
     permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
-    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'userinfo'],
+    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'userinfo', 'avatar', 'sondage'],
   },
   {
     name: 'Configuration et tickets',
@@ -133,9 +145,9 @@ const HELP_GROUPS = [
   {
     name: 'Jeux et animations',
     value: 'entertainment',
-    description: 'Giveaways avec participation par bouton et mini-jeux privés.',
+    description: 'Giveaways avec participation par bouton et mini-jeux rapides.',
     permission: 'Le giveaway nécessite Gérer le serveur ; les mini-jeux sont ouverts à tous.',
-    commands: ['giveaway', 'minijeu', 'quiz'],
+    commands: ['giveaway', 'minijeu', 'quiz', 'de', 'pileouface'],
   },
 ];
 
@@ -541,31 +553,31 @@ function configModal(customId, title, fields) {
   return modal;
 }
 
-function configModalFor(settings, key, prefix = 'config') {
+function configModalFor(settings, key, ownerId, prefix = 'config') {
   const { security } = settings;
   if (key === 'tickets') {
-    return configModal('config:save:tickets', 'Panneau de tickets', [
+    return configModal(`config:save:tickets:${ownerId}`, 'Panneau de tickets', [
       { id: 'title', label: 'Titre (1–100 caractères)', value: settings.ticketPanelTitle, maxLength: 100 },
       { id: 'description', label: 'Instructions (1–1000 caractères)', value: settings.ticketPanelDescription, maxLength: 1000, long: true },
     ]);
   }
   if (key === 'antiSpam') {
-    return configModal(`${prefix}:save:antiSpam`, 'Protection anti-spam', [
+    return configModal(`${prefix}:save:antiSpam:${ownerId}`, 'Protection anti-spam', [
       { id: 'maximum', label: 'Messages avant intervention (3–15)', value: security.antiSpam.maxMessages, maxLength: 2 },
       { id: 'interval', label: 'Fenêtre en secondes (3–60)', value: security.antiSpam.intervalSeconds, maxLength: 2 },
       { id: 'timeout', label: 'Suspension en minutes (1–60)', value: security.antiSpam.timeoutMinutes, maxLength: 2 },
     ]);
   }
-  return configModal(`${prefix}:save:antiRaid`, 'Protection anti-raid', [
+  return configModal(`${prefix}:save:antiRaid:${ownerId}`, 'Protection anti-raid', [
     { id: 'threshold', label: 'Arrivées (3–30)', value: security.antiRaid.joinThreshold, maxLength: 2 },
     { id: 'interval', label: 'Fenêtre en secondes (5–120)', value: security.antiRaid.intervalSeconds, maxLength: 3 },
     { id: 'duration', label: 'Protection en minutes (1–60)', value: security.antiRaid.protectionMinutes, maxLength: 2 },
   ]);
 }
 
-function announcementModal(settings, section) {
+function announcementModal(settings, section, ownerId) {
   const announcement = settings[section];
-  return configModal(`config:save:${section}`, section === 'welcome' ? 'Annonce de bienvenue' : 'Annonce de départ', [
+  return configModal(`config:save:${section}:${ownerId}`, section === 'welcome' ? 'Annonce de bienvenue' : 'Annonce de départ', [
     { id: 'message', label: 'Texte de l’annonce', value: announcement.message, maxLength: 1000, long: true },
   ]);
 }
@@ -742,6 +754,65 @@ export async function handleCommand(interaction) {
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     return;
   }
+  if (name === 'avatar') {
+    const target = interaction.options.getUser('user') ?? interaction.user;
+    const avatarUrl = target.displayAvatarURL({ size: 1024 });
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`Avatar de ${target.tag ?? target.username}`)
+      .setImage(avatarUrl)
+      .setURL(avatarUrl);
+    await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+    return;
+  }
+  if (name === 'sondage') {
+    const question = interaction.options.getString('question', true).trim();
+    const answers = ['choix1', 'choix2', 'choix3', 'choix4', 'choix5']
+      .map((option) => interaction.options.getString(option))
+      .filter((answer) => answer !== null)
+      .map((answer) => answer.trim());
+    const normalizedAnswers = answers.map((answer) => answer.toLocaleLowerCase('fr'));
+    if (!question || answers.some((answer) => !answer) || new Set(normalizedAnswers).size !== answers.length) {
+      await interaction.reply({ content: 'La question et chaque réponse doivent être renseignées, et les réponses doivent être différentes.', ephemeral: true });
+      return;
+    }
+    if (!interaction.channel?.isTextBased() || typeof interaction.channel.send !== 'function') {
+      await interaction.reply({ content: 'Le sondage doit être lancé depuis un salon textuel.', ephemeral: true });
+      return;
+    }
+    const duration = interaction.options.getInteger('duree', true);
+    await interaction.deferReply({ ephemeral: true });
+    await interaction.channel.send({
+      poll: {
+        question: { text: question },
+        answers: answers.map((text) => ({ text })),
+        duration,
+        allowMultiselect: false,
+      },
+    });
+    await interaction.editReply({ content: `Le sondage a été publié dans <#${interaction.channelId}>.` });
+    return;
+  }
+  if (name === 'de') {
+    const count = interaction.options.getInteger('nombre') ?? 1;
+    const sides = interaction.options.getInteger('faces') ?? 6;
+    if (count < 1 || count > 10 || sides < 2 || sides > 100) {
+      await interaction.reply({ content: 'Choisissez de 1 à 10 dés et de 2 à 100 faces par dé.', ephemeral: true });
+      return;
+    }
+    const rolls = Array.from({ length: count }, () => randomInt(1, sides + 1));
+    const total = rolls.reduce((sum, roll) => sum + roll, 0);
+    await interaction.reply({
+      content: `🎲 Résultat : ${rolls.join(' + ')}${count > 1 ? ` = **${total}**` : ''}`,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  if (name === 'pileouface') {
+    const result = randomInt(2) === 0 ? 'Pile' : 'Face';
+    await interaction.reply({ content: `🪙 La pièce est tombée sur **${result}** !` });
+    return;
+  }
   if (name === 'gestion') {
     const key = interaction.options.getString('annonce');
     const attachment = interaction.options.getAttachment('image');
@@ -797,46 +868,6 @@ export async function handleCommand(interaction) {
   }
   if (name === 'quiz') {
     await startQuiz(interaction);
-    return;
-  }
-
-  if (name === 'report') {
-    const target = interaction.options.getUser('user', true);
-    if (target.id === interaction.user.id) {
-      await interaction.reply({ content: 'Vous ne pouvez pas vous signaler vous-même.', ephemeral: true });
-      return;
-    }
-    if (!settings.logChannelId) {
-      await interaction.reply({ content: 'Le salon des journaux n’est pas configuré. Prévenez un administrateur pour qu’il le choisisse dans `/gestion`.', ephemeral: true });
-      return;
-    }
-    const member = await fetchMember(interaction.guild, target.id);
-    if (!member) {
-      await interaction.reply({ content: 'Le membre signalé ne fait pas partie de ce serveur.', ephemeral: true });
-      return;
-    }
-    const details = interaction.options.getString('details', true).trim();
-    if (!details) {
-      await interaction.reply({ content: 'Ajoutez une description du problème avant d’envoyer le signalement.', ephemeral: true });
-      return;
-    }
-    await interaction.deferReply({ ephemeral: true });
-    const channel = await interaction.guild.channels.fetch(settings.logChannelId);
-    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
-      await interaction.editReply({ content: 'Le salon des journaux configuré n’est plus disponible. Prévenez un administrateur.' });
-      return;
-    }
-    const embed = new EmbedBuilder()
-      .setTitle('Nouveau signalement')
-      .setColor(0xed4245)
-      .addFields(
-        { name: 'Membre signalé', value: `<@${target.id}> (${target.tag})`, inline: true },
-        { name: 'Signalé par', value: `<@${interaction.user.id}>`, inline: true },
-        { name: 'Description', value: details.slice(0, 1000) },
-      )
-      .setTimestamp();
-    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-    await interaction.editReply({ content: 'Votre signalement a été transmis à l’équipe de modération.' });
     return;
   }
 
@@ -1139,8 +1170,21 @@ export async function handleCommand(interaction) {
   }
 }
 
+function isPanelOwner(interaction) {
+  const ownerId = interaction.message?.interactionMetadata?.user?.id
+    ?? interaction.message?.interaction?.user?.id;
+  return Boolean(ownerId && ownerId === interaction.user?.id);
+}
+
 export async function handleHelpInteraction(interaction) {
   if (!interaction.isStringSelectMenu() || interaction.customId !== 'help:category') return false;
+  if (!isPanelOwner(interaction)) {
+    await interaction.reply({
+      content: 'Seule la personne qui a ouvert ce panneau peut l’utiliser. Lancez `/aide` pour ouvrir votre propre panneau.',
+      ephemeral: true,
+    });
+    return true;
+  }
   const [groupValue] = interaction.values;
   const embed = helpPanelEmbed(groupValue);
   if (!embed) {
@@ -1236,11 +1280,27 @@ export async function handleConfigInteraction(interaction) {
       || interaction.customId.startsWith('warboubou:')
       || interaction.customId === 'gestion:dashboard'
       || interaction.customId === 'securitas:dashboard');
-  const isConfigModal = interaction.isModalSubmit()
-    && (interaction.customId.startsWith('config:save:') || interaction.customId.startsWith('warboubou:save:'));
+  const configModalMatch = interaction.isModalSubmit()
+    ? interaction.customId.match(/^(config|warboubou):save:(antiSpam|antiRaid|welcome|leave|tickets):(\d{1,20})$/)
+    : null;
+  const isConfigModal = Boolean(configModalMatch);
   if (!isConfigButton && !isConfigSelect && !isConfigModal) return false;
   if (!interaction.inGuild()) {
     await interaction.reply({ content: 'La configuration est disponible uniquement sur un serveur Discord.', ephemeral: true });
+    return true;
+  }
+  if (!isConfigModal && !isPanelOwner(interaction)) {
+    await interaction.reply({
+      content: 'Seule la personne qui a ouvert ce panneau peut l’utiliser. Relancez la commande pour ouvrir votre propre panneau.',
+      ephemeral: true,
+    });
+    return true;
+  }
+  if (isConfigModal && configModalMatch[3] !== interaction.user?.id) {
+    await interaction.reply({
+      content: 'Seule la personne qui a ouvert ce formulaire peut l’envoyer. Relancez la commande pour ouvrir votre propre panneau.',
+      ephemeral: true,
+    });
     return true;
   }
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
@@ -1464,8 +1524,8 @@ export async function handleConfigInteraction(interaction) {
     if (edit) {
       const [, prefix, key] = edit;
       const modal = key === 'welcome' || key === 'leave'
-        ? announcementModal(settings, key)
-        : configModalFor(settings, key, prefix);
+        ? announcementModal(settings, key, interaction.user.id)
+        : configModalFor(settings, key, interaction.user.id, prefix);
       await interaction.showModal(modal);
       return true;
     }
@@ -1479,7 +1539,7 @@ export async function handleConfigInteraction(interaction) {
   }
 
   const savePrefix = isWarBoubou ? 'warboubou:save:' : 'config:save:';
-  const key = interaction.customId.slice(savePrefix.length);
+  const key = interaction.customId.slice(savePrefix.length).split(':')[0];
   if (key === 'antiSpam') {
     const maxMessages = boundedInteger(modalValue(interaction, 'maximum'), 3, 15);
     const intervalSeconds = boundedInteger(modalValue(interaction, 'interval'), 3, 60);

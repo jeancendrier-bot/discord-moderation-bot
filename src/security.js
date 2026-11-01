@@ -164,13 +164,21 @@ function scheduleRaidRestore(guild, settings) {
         description: `Impossible de restaurer le niveau de vérification sur **${guild.name}**. La protection sera réessayée dans une minute.`,
         originGuildId: guild.id,
       });
-      settings.security.raidProtection.restoreAt = Date.now() + 60_000;
-      await save().catch(() => {});
-      scheduleRaidRestore(guild, settings);
+      await retryRaidRestore(guild, settings);
     }
   }, Math.max(0, restoreAt - Date.now()));
   timer.unref();
   raidTimers.set(guild.id, timer);
+}
+
+async function retryRaidRestore(guild, settings) {
+  settings.security.raidProtection.restoreAt = Date.now() + 60_000;
+  try {
+    await save();
+  } catch (error) {
+    console.error(`[moderation-bot] Impossible d’enregistrer la nouvelle tentative de restauration anti-raid sur ${guild.id} :`, error);
+  }
+  scheduleRaidRestore(guild, settings);
 }
 
 export async function handleGuildMemberAdd(member) {
@@ -234,9 +242,10 @@ export async function restoreRaidProtection(client) {
         console.error('[moderation-bot] Restauration de la protection anti-raid impossible :', error.message);
         await notifySupport(guild.client, {
           title: '🚨 Échec de protection anti-raid',
-          description: `Impossible de restaurer le niveau de vérification sur **${guild.name}** après le redémarrage du bot.`,
+          description: `Impossible de restaurer le niveau de vérification sur **${guild.name}** après le redémarrage du bot. Une nouvelle tentative sera effectuée dans une minute.`,
           originGuildId: guild.id,
         });
+        await retryRaidRestore(guild, settings);
       }
       continue;
     }
