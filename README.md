@@ -9,11 +9,11 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 2. Dans **Bot > Privileged Gateway Intents**, activez **Server Members Intent** et **Message Content Intent**.
 3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
-5. Lancez `/securitas` pour ouvrir le tableau central et choisir un panneau : protections, tickets, vérification, journaux, bienvenue, départ ou langue.
+5. Lancez `/securitas` pour configurer uniquement les protections anti-raid, anti-spam et anti-liens, puis `/gestion` pour les réglages de bienvenue, départ, langue et journaux.
 6. Configurez et publiez le panneau de tickets depuis le tableau interactif `/tickets`.
 
 Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (si elle peut être identifiée dans les journaux d’audit), puis affiche toutes ses commandes slash dans le salon système ou, si celui-ci n’est pas accessible, dans le premier salon textuel où il peut écrire. La permission **View Audit Log** permet d’identifier l’invitant ; sans elle, le bot remercie toute l’équipe sans mentionner quelqu’un par erreur.
-À son démarrage, lors d’un arrêt propre et après une perte ou une reconnexion à Discord, le bot annonce son état uniquement sur le serveur support [discord.gg/FXbeGGyVn](https://discord.gg/FXbeGGyVn), dans le salon défini depuis le panneau **Journal de modération** de `/securitas` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Les alertes de nouvelle version et les alertes anti-raid graves sont également relayées sur ce serveur support uniquement. Les détections anti-spam et anti-liens restent dans le journal du serveur concerné pour éviter de transmettre des données de modération d’un serveur à un autre. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
+À son démarrage, lors d’un arrêt propre et après une perte ou une reconnexion à Discord, le bot annonce son état uniquement sur le serveur support [discord.gg/FXbeGGyVn](https://discord.gg/FXbeGGyVn), dans le salon défini depuis le panneau **Journal de modération** de `/gestion` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Les alertes de nouvelle version et les alertes anti-raid graves sont également relayées sur ce serveur support uniquement. Les détections anti-spam et anti-liens restent dans le journal du serveur concerné pour éviter de transmettre des données de modération d’un serveur à un autre. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
 
 ## Modération
 | Commande | Fonction |
@@ -36,24 +36,29 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 | `/vocal rejoindre salon` | Connecte le bot au salon vocal choisi (sans musique ni diffusion audio) et mémorise ce choix pour le prochain démarrage. |
 | `/vocal quitter` | Déconnecte le bot et annule les reconnexions automatiques. |
 | `/nickname user [nickname] [reason]` | Définit ou réinitialise le pseudonyme d’un membre. |
-| `/report user details` | Transmet un signalement privé à l’équipe via le salon configuré depuis le panneau **Journal de modération** de `/securitas`. |
+| `/report user details` | Transmet un signalement privé à l’équipe via le salon configuré depuis le panneau **Journal de modération** de `/gestion`. |
+| `/serverinfo` | Affiche le nombre de membres, les salons, la date de création et le propriétaire du serveur. |
+| `/userinfo [user]` | Affiche l’identifiant, les dates de compte/arrivée et les rôles d’un membre. |
 | `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
 | `/giveaway lot duree gagnants [salon]` | Lance un giveaway avec bouton de participation ; réservé aux membres ayant **Gérer le serveur**. La durée va de 1 minute à 7 jours et le nombre de gagnants de 1 à 20. Par défaut, le giveaway est publié dans le salon actuel ; l’option `salon` permet de choisir un salon textuel. |
 | `/minijeu` | Ouvre un mini-jeu privé de pierre-feuille-ciseaux contre le bot, accessible à tous. |
+| `/quiz` | Lance une question privée de culture générale à choix multiples ; une nouvelle question est tirée à chaque utilisation. |
 
 Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon** et **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son. Il reste dans le salon tant que `/vocal quitter` n’a pas été utilisée. Le salon choisi est conservé dans la configuration persistante : le bot tente de le rejoindre à son démarrage et de rétablir la connexion après une interruption. Utilisez `/vocal quitter` pour désactiver cette reconnexion. Si le bot ou l’hébergeur est arrêté, il ne peut pas rester connecté pendant l’arrêt ; il reviendra au prochain démarrage.
 
-Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Dans `/securitas`, choisissez **Bienvenue** ou **Départ** pour ouvrir les boutons de réglage du salon, du texte, de l’activation et de l’aperçu. Le ping du nouvel arrivant se règle dans le panneau **Bienvenue**. Pour joindre ou retirer une image, lancez `/securitas` avec l’option `annonce`, puis l’option `image` ou `effacer_image`.
+Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Dans `/gestion`, choisissez **Bienvenue** ou **Départ** pour ouvrir les boutons de réglage du salon, du texte, de l’activation et de l’aperçu. Le ping du nouvel arrivant se règle dans le panneau **Bienvenue**. Pour joindre ou retirer une image, lancez `/gestion` avec l’option `annonce`, puis l’option `image` ou `effacer_image`.
 
 ## Protection automatique
-Les commandes de configuration sont réservées aux membres disposant de **Gérer le serveur**. `/securitas` ouvre le tableau central privé : choisissez un panneau dans son menu, les réglages sont enregistrés immédiatement.
+Les commandes de configuration sont réservées aux membres disposant de **Gérer le serveur**. `/securitas` affiche uniquement les protections automatiques. `/gestion` affiche les réglages de bienvenue, départ, langue et journaux. `/verification` configure séparément le CAPTCHA ; `/tickets` reste indépendant.
 
 | Commande | Paramètres |
 |---|---|
-| `/securitas` | Tableau central avec des panneaux prêts à l’emploi pour Securitas (anti-raid, anti-spam, anti-liens), les tickets, la vérification, les journaux, les annonces et la langue. |
+| `/securitas` | Panneau dédié aux protections anti-raid, anti-spam et anti-liens. |
+| `/gestion` | Panneau privé de bienvenue, départ, langue et journaux ; options `annonce`, `image` et `effacer_image` pour les images de bienvenue/départ. |
+| `/verification` | Panneau indépendant pour configurer la vérification CAPTCHA des nouveaux membres. |
 | `/tickets` | Raccourci direct vers le panneau interactif des tickets : catégorie, rôle support, texte, aperçu et publication. |
 
-Les modifications sont enregistrées immédiatement. Les notifications de détection sont envoyées dans le salon défini depuis le panneau **Journal de modération** de `/securitas`. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
+Les modifications sont enregistrées immédiatement. Les notifications de détection sont envoyées dans le salon défini depuis le panneau **Journal de modération** de `/gestion`. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
 
 Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
 
@@ -63,7 +68,7 @@ Les alertes anti-raid graves et les échecs de restauration de la protection son
 
 1. Créez un rôle, par exemple **Vérifié**, et placez-le sous le rôle du bot. Accordez au bot **Gérer les rôles**.
 2. Dans les permissions des salons, laissez le salon de vérification visible à `@everyone` et réservez les autres salons aux membres portant le rôle **Vérifié**.
-3. Lancez `/securitas`, ouvrez **Vérification CAPTCHA**, sélectionnez le rôle, activez la protection, puis cliquez sur **Publier le panneau ici** dans le salon accessible aux nouveaux membres.
+3. Lancez `/verification`, sélectionnez le rôle, activez la protection, puis cliquez sur **Publier le panneau ici** dans le salon accessible aux nouveaux membres.
 4. Les nouveaux membres cliquent sur le panneau, reçoivent une image privée et saisissent les six caractères dans le formulaire. Le code expire après cinq minutes et cinq réponses incorrectes obligent à recommencer.
 
 Le CAPTCHA limite les inscriptions automatisées simples, mais n’est pas une protection absolue contre des services automatisés capables de reconnaître des images. L’activation de la commande ne modifie pas les permissions des salons : configurez bien l’accès avec le rôle **Vérifié**. La configuration doit être stockée sur un volume persistant.
@@ -82,7 +87,7 @@ Pour activer les tickets, ouvrez le tableau unique `/tickets` : choisissez la ca
 | Variable | Obligatoire | Description |
 |---|---|---|
 | `DISCORD_TOKEN` | Oui | Jeton du bot Discord. |
-| `MODLOG_CHANNEL_ID` | Non | Salon de journalisation utilisé par défaut ; le panneau **Journal de modération** de `/securitas` permet de le modifier. |
+| `MODLOG_CHANNEL_ID` | Non | Salon de journalisation utilisé par défaut ; le panneau **Journal de modération** de `/gestion` permet de le modifier. |
 | `CONFIG_PATH` | Non | Chemin du fichier de configuration persistant. Par défaut : `/data/moderation-config.json`. |
 
 Les avertissements, paramètres et images des annonces sont conservés après redémarrage. Le stockage doit être persistant sur l’hébergeur.

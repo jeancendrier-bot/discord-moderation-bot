@@ -140,7 +140,7 @@ export async function handleBotStatus(client, state, reason = '') {
     online: { title: '🟢 Bot en ligne', color: 0x57f287, description: `**${client.user.tag}** est connecté et prêt à fonctionner sur ce serveur.` },
     reconnected: { title: '🟢 Connexion Discord rétablie', color: 0x57f287, description: `**${client.user.tag}** a retrouvé sa connexion à Discord.` },
     disconnected: { title: '🟠 Connexion Discord interrompue', color: 0xe67e22, description: `**${client.user.tag}** a perdu sa connexion à Discord et va tenter de se reconnecter${reason ? ` (code ${reason})` : ''}.` },
-    offline: { title: '🔴 Bot hors ligne', color: 0xed4245, description: `**${client.user.tag}** s’arrête proprement${reason ? ` (${reason})` : ''}.` },
+    offline: { title: '🔴 Bot hors ligne', color: 0xed4245, description: `**${client.user.tag}** sera hors ligne après cet arrêt propre${reason ? ` (${reason})` : ''}.` },
   };
   const status = statuses[state];
   if (!status) throw new Error(`État de bot inconnu : ${state}`);

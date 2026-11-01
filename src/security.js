@@ -126,13 +126,14 @@ export async function handleMessageCreate(message) {
 
   spamCooldowns.set(key, now + 60_000);
   spamWindows.delete(key);
-  const deletionResults = await Promise.allSettled(recent.map(({ message: spamMessage }) => spamMessage.delete()));
-  const deletedCount = deletionResults.filter((result) => result.status === 'fulfilled').length;
   const botMember = message.guild.members.me;
   if (member.id === message.guild.ownerId || (botMember && member.roles.highest.position >= botMember.roles.highest.position)) {
-    await sendLog(message.guild, settings, words.spamLog(member.id, message.channelId, security.antiSpam.timeoutMinutes, false, deletedCount));
+    await sendLog(message.guild, settings, words.spamLog(member.id, message.channelId, security.antiSpam.timeoutMinutes, false, 0));
     return;
   }
+
+  const deletionResults = await Promise.allSettled(recent.map(({ message: spamMessage }) => spamMessage.delete()));
+  const deletedCount = deletionResults.filter((result) => result.status === 'fulfilled').length;
 
   let timeoutApplied = false;
   try {

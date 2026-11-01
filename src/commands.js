@@ -16,7 +16,7 @@ import {
 } from 'discord.js';
 import { getGuild, removeMemberEventImage, save, saveMemberEventImage } from './store.js';
 import { connectConfiguredVoice, disconnectConfiguredVoice } from './voice.js';
-import { startGiveaway, startMiniGame } from './entertainment.js';
+import { startGiveaway, startMiniGame, startQuiz } from './entertainment.js';
 
 const reason = (o) => o.setName('reason').setDescription('Motif communiqué au membre et consigné dans le journal').setMaxLength(400);
 const user = (o) => o.setName('user').setDescription('Membre visé par cette action').setRequired(true);
@@ -55,23 +55,29 @@ export const commands = [
   new SlashCommandBuilder().setName('report').setDescription('Signaler un membre à l’équipe de modération')
     .addUserOption((o) => o.setName('user').setDescription('Membre à signaler').setRequired(true))
     .addStringOption((o) => o.setName('details').setDescription('Décrivez clairement le problème').setMaxLength(800).setRequired(true)),
+  new SlashCommandBuilder().setName('serverinfo').setDescription('Afficher les informations principales du serveur'),
+  new SlashCommandBuilder().setName('userinfo').setDescription('Afficher les informations publiques d’un membre')
+    .addUserOption((o) => o.setName('user').setDescription('Membre à consulter ; par défaut, vous-même')),
   new SlashCommandBuilder().setName('vocal').setDescription('Gérer la connexion vocale persistante du bot').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('rejoindre').setDescription('Rejoindre et mémoriser le salon vocal')
       .addChannelOption((option) => option.setName('salon').setDescription('Salon vocal à rejoindre').addChannelTypes(ChannelType.GuildVoice).setRequired(true)))
     .addSubcommand((o) => o.setName('quitter').setDescription('Quitter le salon et désactiver la reconnexion')),
   new SlashCommandBuilder().setName('logs').setDescription('Consulter les dernières entrées du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les dix dernières entrées du journal')),
-  new SlashCommandBuilder().setName('securitas').setDescription('Ouvrir les panneaux de configuration du serveur').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  new SlashCommandBuilder().setName('securitas').setDescription('Gérer les protections anti-raid, anti-spam et anti-liens').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('gestion').setDescription('Ouvrir les réglages de bienvenue, départ, langue et journaux').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) => o.setName('annonce').setDescription('Ouvrir le panneau de bienvenue ou de départ')
       .addChoices({ name: 'Bienvenue', value: 'welcome' }, { name: 'Départ', value: 'leave' }))
     .addAttachmentOption((o) => o.setName('image').setDescription('Joindre une image PNG, JPEG, GIF ou WebP (8 Mo max)'))
     .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de l’annonce choisie')),
+  new SlashCommandBuilder().setName('verification').setDescription('Configurer la vérification CAPTCHA des nouveaux membres').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('giveaway').setDescription('Créer un giveaway avec participation par bouton dans un salon textuel').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) => o.setName('lot').setDescription('Lot à gagner').setMaxLength(150).setRequired(true))
     .addIntegerOption((o) => o.setName('duree').setDescription('Durée en minutes (1 à 10 080)').setMinValue(1).setMaxValue(10080).setRequired(true))
     .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de gagnants (1 à 20)').setMinValue(1).setMaxValue(20).setRequired(true))
     .addChannelOption((o) => o.setName('salon').setDescription('Salon textuel de destination ; par défaut, le salon actuel').addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName('minijeu').setDescription('Jouer à pierre-feuille-ciseaux contre le bot'),
+  new SlashCommandBuilder().setName('quiz').setDescription('Répondre à une question de culture générale'),
   new SlashCommandBuilder().setName('tickets').setDescription('Ouvrir le tableau interactif de gestion des tickets').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
@@ -96,6 +102,8 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   vocal: PermissionFlagsBits.ManageGuild,
   logs: PermissionFlagsBits.ManageGuild,
   securitas: PermissionFlagsBits.ManageGuild,
+  gestion: PermissionFlagsBits.ManageGuild,
+  verification: PermissionFlagsBits.ManageGuild,
   giveaway: PermissionFlagsBits.ManageGuild,
   tickets: PermissionFlagsBits.ManageGuild,
 };
@@ -111,23 +119,23 @@ const HELP_GROUPS = [
   {
     name: 'Salons et journal',
     value: 'channels',
-    description: 'Nettoyage, contrôle des salons, annonces et historique de modération.',
+    description: 'Nettoyage, contrôle des salons et historique de modération.',
     permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
-    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal'],
+    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'userinfo'],
   },
   {
     name: 'Configuration et tickets',
     value: 'configuration',
-    description: 'Panneaux de sécurité, annonces, CAPTCHA et système de tickets.',
+    description: 'Panneaux de sécurité et de gestion, CAPTCHA et système de tickets.',
     permission: 'Gérer le serveur pour configurer ; les tickets dépendent de leur configuration.',
-    commands: ['securitas', 'tickets'],
+    commands: ['securitas', 'gestion', 'verification', 'tickets'],
   },
   {
     name: 'Jeux et animations',
     value: 'entertainment',
-    description: 'Giveaways avec participation par bouton et mini-jeu privé.',
-    permission: 'Le giveaway nécessite Gérer le serveur ; le mini-jeu est ouvert à tous.',
-    commands: ['giveaway', 'minijeu'],
+    description: 'Giveaways avec participation par bouton et mini-jeux privés.',
+    permission: 'Le giveaway nécessite Gérer le serveur ; les mini-jeux sont ouverts à tous.',
+    commands: ['giveaway', 'minijeu', 'quiz'],
   },
 ];
 
@@ -320,36 +328,37 @@ function warBoubouComponents(settings) {
   ];
 }
 
-const SECURITAS_PANEL_OPTIONS = [
-  { label: 'Securitas — protections', value: 'security' },
-  { label: 'Tickets', value: 'tickets' },
-  { label: 'Vérification CAPTCHA', value: 'verification' },
+const MANAGEMENT_PANEL_OPTIONS = [
   { label: 'Journal de modération', value: 'logs' },
   { label: 'Bienvenue', value: 'welcome' },
   { label: 'Départ', value: 'leave' },
   { label: 'Langue', value: 'language' },
 ];
 
-function securitasDashboardEmbed() {
+function managementDashboardEmbed() {
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('🛡️ Securitas — configuration du serveur')
-    .setDescription('Choisissez un panneau dans le menu. Les modifications sont enregistrées immédiatement.')
+    .setTitle('⚙️ Gestion du serveur')
+    .setDescription('Choisissez le réglage à modifier. Les changements sont enregistrés immédiatement.')
     .addFields(
-      { name: '🛡️ Sécurité', value: 'Protections Securitas et vérification CAPTCHA', inline: true },
-      { name: '🎫 Communauté', value: 'Tickets, bienvenue et départ', inline: true },
-      { name: '📋 Gestion', value: 'Journal de modération et langue des notifications', inline: true },
+      { name: '👋 Annonces', value: 'Bienvenue et départ', inline: true },
+      { name: '🌐 Notifications', value: 'Langue des notifications automatiques', inline: true },
+      { name: '📋 Journal', value: 'Salon des journaux et alertes de modération', inline: true },
     )
     .setFooter({ text: 'Panneau privé • Réservé aux membres ayant Gérer le serveur' });
 }
 
-function securitasDashboardSelect() {
+function managementDashboardSelect() {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId('securitas:dashboard')
-      .setPlaceholder('Ouvrir un panneau de configuration')
-      .addOptions({ label: 'Accueil — tous les panneaux', value: 'home' }, ...SECURITAS_PANEL_OPTIONS),
+      .setCustomId('gestion:dashboard')
+      .setPlaceholder('Choisir un réglage')
+      .addOptions(...MANAGEMENT_PANEL_OPTIONS),
   );
+}
+
+function isManagementPanel(key) {
+  return MANAGEMENT_PANEL_OPTIONS.some((option) => option.value === key);
 }
 
 function configEmbed(settings, key) {
@@ -513,7 +522,7 @@ function configComponents(settings, key) {
 
 function configPanelComponents(settings, key) {
   const rows = key === 'security' ? warBoubouComponents(settings) : configComponents(settings, key);
-  return [...rows, securitasDashboardSelect()];
+  return isManagementPanel(key) ? [...rows, managementDashboardSelect()] : rows;
 }
 
 function configModal(customId, title, fields) {
@@ -673,6 +682,67 @@ export async function handleCommand(interaction) {
   const getReason = () => interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
 
   if (name === 'securitas') {
+    await interaction.reply({
+      embeds: [warBoubouEmbed(settings)],
+      components: warBoubouComponents(settings),
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  if (name === 'verification') {
+    await interaction.reply({
+      embeds: [configEmbed(settings, 'verification')],
+      components: configComponents(settings, 'verification'),
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  if (name === 'serverinfo') {
+    const guild = interaction.guild;
+    const textChannels = guild.channels.cache.filter((channel) => channel.type === ChannelType.GuildText).size;
+    const voiceChannels = guild.channels.cache.filter((channel) => channel.type === ChannelType.GuildVoice).size;
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`🏠 ${guild.name}`)
+      .addFields(
+        { name: 'Membres', value: String(guild.memberCount ?? 'Inconnu'), inline: true },
+        { name: 'Salons textuels', value: String(textChannels), inline: true },
+        { name: 'Salons vocaux', value: String(voiceChannels), inline: true },
+        { name: 'Créé le', value: guild.createdAt ? `<t:${Math.floor(guild.createdAt.getTime() / 1000)}:D>` : 'Inconnu', inline: true },
+        { name: 'Identifiant', value: guild.id, inline: true },
+      );
+    if (guild.ownerId) embed.addFields({ name: 'Propriétaire', value: `<@${guild.ownerId}>`, inline: true });
+    const iconUrl = guild.iconURL?.();
+    if (iconUrl) embed.setThumbnail(iconUrl);
+    await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+    return;
+  }
+  if (name === 'userinfo') {
+    const target = interaction.options.getUser('user') ?? interaction.user;
+    const member = await fetchMember(interaction.guild, target.id);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`👤 ${target.tag ?? target.username}`)
+      .setThumbnail(target.displayAvatarURL())
+      .addFields(
+        { name: 'Identifiant', value: target.id, inline: true },
+        { name: 'Compte créé', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:D>`, inline: true },
+        { name: 'Bot', value: target.bot ? 'Oui' : 'Non', inline: true },
+        { name: 'A rejoint le serveur', value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:D>` : 'Pas membre ou date inconnue', inline: true },
+      );
+    if (member) {
+      const roles = member.roles.cache
+        .filter((role) => role.id !== interaction.guildId)
+        .map((role) => `<@&${role.id}>`)
+        .slice(0, 10);
+      embed.addFields({ name: 'Rôles', value: roles.length ? roles.join(', ') : 'Aucun rôle attribué' });
+    }
+    await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
+    return;
+  }
+  if (name === 'gestion') {
     const key = interaction.options.getString('annonce');
     const attachment = interaction.options.getAttachment('image');
     const clearImage = interaction.options.getBoolean('effacer_image') ?? false;
@@ -701,8 +771,8 @@ export async function handleCommand(interaction) {
       return;
     }
     await interaction.reply({
-      embeds: [key ? configEmbed(settings, key) : securitasDashboardEmbed()],
-      components: key ? configPanelComponents(settings, key) : [securitasDashboardSelect()],
+      embeds: [key ? configEmbed(settings, key) : managementDashboardEmbed()],
+      components: key ? configPanelComponents(settings, key) : [managementDashboardSelect()],
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -725,6 +795,10 @@ export async function handleCommand(interaction) {
     await startMiniGame(interaction);
     return;
   }
+  if (name === 'quiz') {
+    await startQuiz(interaction);
+    return;
+  }
 
   if (name === 'report') {
     const target = interaction.options.getUser('user', true);
@@ -733,7 +807,7 @@ export async function handleCommand(interaction) {
       return;
     }
     if (!settings.logChannelId) {
-      await interaction.reply({ content: 'Le salon des journaux n’est pas configuré. Prévenez un administrateur pour qu’il le choisisse dans `/securitas`.', ephemeral: true });
+      await interaction.reply({ content: 'Le salon des journaux n’est pas configuré. Prévenez un administrateur pour qu’il le choisisse dans `/gestion`.', ephemeral: true });
       return;
     }
     const member = await fetchMember(interaction.guild, target.id);
@@ -803,7 +877,7 @@ export async function handleCommand(interaction) {
   if (name === 'logs') {
     const subcommand = interaction.options.getSubcommand();
     if (!settings.logChannelId) {
-      await interaction.reply({ content: 'Aucun salon de journal n’est configuré. Utilisez `/securitas` pour en choisir un.', ephemeral: true });
+      await interaction.reply({ content: 'Aucun salon de journal n’est configuré. Utilisez `/gestion` pour en choisir un.', ephemeral: true });
       return;
     }
     await interaction.deferReply({ ephemeral: true });
@@ -1158,7 +1232,10 @@ export async function handleConfigInteraction(interaction) {
   const isConfigButton = interaction.isButton()
     && (interaction.customId.startsWith('config:') || interaction.customId.startsWith('warboubou:'));
   const isConfigSelect = (interaction.isStringSelectMenu?.() || interaction.isChannelSelectMenu?.() || interaction.isRoleSelectMenu?.())
-    && (interaction.customId.startsWith('config:') || interaction.customId.startsWith('warboubou:') || interaction.customId === 'securitas:dashboard');
+    && (interaction.customId.startsWith('config:')
+      || interaction.customId.startsWith('warboubou:')
+      || interaction.customId === 'gestion:dashboard'
+      || interaction.customId === 'securitas:dashboard');
   const isConfigModal = interaction.isModalSubmit()
     && (interaction.customId.startsWith('config:save:') || interaction.customId.startsWith('warboubou:save:'));
   if (!isConfigButton && !isConfigSelect && !isConfigModal) return false;
@@ -1168,6 +1245,14 @@ export async function handleConfigInteraction(interaction) {
   }
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
     await interaction.reply({ content: 'La permission « Gérer le serveur » est requise pour modifier ces paramètres.', ephemeral: true });
+    return true;
+  }
+
+  if (interaction.customId === 'securitas:dashboard') {
+    await interaction.reply({
+      content: 'Ce tableau a été remplacé. Utilisez `/securitas` pour les protections, `/gestion` pour les réglages du serveur, ou `/verification` et `/tickets` pour leurs panneaux dédiés.',
+      ephemeral: true,
+    });
     return true;
   }
 
@@ -1200,22 +1285,14 @@ export async function handleConfigInteraction(interaction) {
   }
 
   if (isConfigSelect && interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'securitas:dashboard') {
+    if (interaction.customId === 'gestion:dashboard') {
       const key = interaction.values[0];
-      if (key === 'home') {
-        await interaction.update({
-          embeds: [securitasDashboardEmbed()],
-          components: [securitasDashboardSelect()],
-          allowedMentions: { parse: [] },
-        });
-        return true;
-      }
-      if (!SECURITAS_PANEL_OPTIONS.some((option) => option.value === key)) {
+      if (!isManagementPanel(key)) {
         await interaction.reply({ content: 'Ce panneau de configuration n’existe pas.', ephemeral: true });
         return true;
       }
       await interaction.update({
-        embeds: [key === 'security' ? warBoubouEmbed(settings) : configEmbed(settings, key)],
+        embeds: [configEmbed(settings, key)],
         components: configPanelComponents(settings, key),
         allowedMentions: { parse: [] },
       });

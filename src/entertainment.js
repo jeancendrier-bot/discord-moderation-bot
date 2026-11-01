@@ -11,6 +11,14 @@ const maximumDurationMinutes = 7 * 24 * 60;
 const maximumWinners = 20;
 const giveawayTimers = new Map();
 const endingGiveaways = new Set();
+const quizSessions = new Map();
+const quizSessionLifetime = 5 * 60_000;
+
+function pruneQuizSessions(now = Date.now()) {
+  for (const [token, session] of quizSessions) {
+    if (session.expiresAt <= now) quizSessions.delete(token);
+  }
+}
 
 function giveawayKey(guildId, giveawayId) {
   return `${guildId}:${giveawayId}`;
@@ -184,10 +192,48 @@ export async function startMiniGame(interaction) {
   });
 }
 
+const quizQuestions = [
+  { question: 'Quelle est la planète la plus proche du Soleil ?', answers: ['Mercure', 'Vénus', 'Mars'], correct: 0 },
+  { question: 'Combien de côtés possède un hexagone ?', answers: ['Cinq', 'Six', 'Huit'], correct: 1 },
+  { question: 'Quel est le plus grand océan du monde ?', answers: ['Atlantique', 'Indien', 'Pacifique'], correct: 2 },
+  { question: 'Quelle langue est principalement parlée au Brésil ?', answers: ['Espagnol', 'Portugais', 'Français'], correct: 1 },
+  { question: 'Combien de minutes y a-t-il dans deux heures ?', answers: ['100', '120', '140'], correct: 1 },
+];
+
+export async function startQuiz(interaction) {
+  pruneQuizSessions();
+  if (quizSessions.size >= 10_000) {
+    await interaction.reply({ content: 'Trop de quiz sont en cours. Réessayez dans quelques minutes.', ephemeral: true });
+    return;
+  }
+  const entry = quizQuestions[randomInt(quizQuestions.length)];
+  const token = randomUUID();
+  quizSessions.set(token, {
+    guildId: interaction.guildId,
+    userId: interaction.user.id,
+    entry,
+    expiresAt: Date.now() + quizSessionLifetime,
+  });
+  await interaction.reply({
+    embeds: [new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🧠 Quiz de culture générale')
+      .setDescription(entry.question)],
+    components: [new ActionRowBuilder().addComponents(
+      ...entry.answers.map((answer, index) => new ButtonBuilder()
+        .setCustomId(`quiz:answer:${token}:${index}`)
+        .setLabel(answer)
+        .setStyle(ButtonStyle.Primary)),
+    )],
+    ephemeral: true,
+  });
+}
+
 export async function handleEntertainmentInteraction(interaction) {
   const isGiveawayButton = interaction.isButton() && interaction.customId.startsWith('giveaway:join:');
   const isGameButton = interaction.isButton() && interaction.customId.startsWith('minijeu:rps:');
-  if (!isGiveawayButton && !isGameButton) return false;
+  const isQuizButton = interaction.isButton() && interaction.customId.startsWith('quiz:answer:');
+  if (!isGiveawayButton && !isGameButton && !isQuizButton) return false;
   if (!interaction.inGuild()) {
     await interaction.reply({ content: 'Cette interaction est disponible uniquement sur un serveur Discord.', ephemeral: true });
     return true;
@@ -228,6 +274,37 @@ export async function handleEntertainmentInteraction(interaction) {
       throw error;
     }
     await interaction.reply({ content: 'Ta participation est enregistrée. Bonne chance !', ephemeral: true });
+    return true;
+  }
+
+  if (isQuizButton) {
+    const match = interaction.customId.match(/^quiz:answer:([0-9a-f-]{36}):([0-2])$/i);
+    if (!match) {
+      await interaction.reply({ content: 'Cette réponse de quiz n’est pas reconnue.', ephemeral: true });
+      return true;
+    }
+    const [, token, selected] = match;
+    const session = quizSessions.get(token);
+    if (!session || session.expiresAt <= Date.now()) {
+      quizSessions.delete(token);
+      await interaction.reply({ content: 'Ce quiz a expiré. Lancez `/quiz` pour en obtenir un nouveau.', ephemeral: true });
+      return true;
+    }
+    if (session.guildId !== interaction.guildId || session.userId !== interaction.user.id) {
+      await interaction.reply({ content: 'Ce quiz appartient à un autre membre.', ephemeral: true });
+      return true;
+    }
+    quizSessions.delete(token);
+    const isCorrect = Number(selected) === session.entry.correct;
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setColor(isCorrect ? 0x57f287 : 0xed4245)
+        .setTitle(isCorrect ? '✅ Bonne réponse !' : '❌ Mauvaise réponse')
+        .setDescription(isCorrect
+          ? 'Bien joué !'
+          : `La bonne réponse était **${session.entry.answers[session.entry.correct]}**. Essaie encore avec \`/quiz\`.`)],
+      components: [],
+    });
     return true;
   }
 
