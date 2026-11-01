@@ -12,8 +12,8 @@ let saveMemberEventImage;
 let removeMemberEventImage;
 let commands;
 let handleCommand;
-let handleAdminPanelInteraction;
 let handleConfigInteraction;
+let handleHelpInteraction;
 let handleTicketInteraction;
 let handleVerificationInteraction;
 let handleEntertainmentInteraction;
@@ -24,7 +24,7 @@ before(async () => {
   dataDirectory = await mkdtemp(join(tmpdir(), 'moderation-bot-test-'));
   process.env.CONFIG_PATH = join(dataDirectory, 'config.json');
   ({ getGuild, removeMemberEventImage, save, saveMemberEventImage } = await import('../src/store.js'));
-  ({ commands, handleAdminPanelInteraction, handleCommand, handleConfigInteraction, handleTicketInteraction } = await import('../src/commands.js'));
+  ({ commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction } = await import('../src/commands.js'));
   ({ handleVerificationInteraction } = await import('../src/verification.js'));
   ({ handleEntertainmentInteraction, restoreGiveaways } = await import('../src/entertainment.js'));
   security = await import('../src/security.js');
@@ -37,8 +37,15 @@ after(async () => {
 describe('slash command definitions', () => {
   it('serialize unique commands with valid Discord descriptions', async () => {
     const names = commands.map((command) => command.name);
-    assert.equal(names.length, 25);
+    assert.equal(names.length, 23);
     assert.equal(new Set(names).size, names.length);
+    for (const commandName of [
+      'warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout',
+      'kick', 'ban', 'unban', 'purge', 'slowmode', 'lock', 'unlock',
+      'dire', 'nickname', 'report',
+    ]) {
+      assert.ok(commands.some((command) => command.name === commandName), `/${commandName} remains a direct command`);
+    }
 
     const inspect = (option, path) => {
       assert.ok(option.name, `${path} has a name`);
@@ -48,9 +55,10 @@ describe('slash command definitions', () => {
     };
 
     for (const command of commands) inspect(command, `/${command.name}`);
-    const config = commands.find((command) => command.name === 'config');
-    assert.deepEqual(config.options.map((option) => option.name), ['langue', 'journaux', 'bienvenue', 'depart', 'verification']);
-    assert.equal(commands.find((command) => command.name === 'securitas').default_member_permissions, '32');
+    const securitas = commands.find((command) => command.name === 'securitas');
+    assert.deepEqual(securitas.options.map((option) => option.name), ['annonce', 'image', 'effacer_image']);
+    assert.equal(securitas.default_member_permissions, '32');
+    assert.equal(commands.some((command) => command.name === 'config'), false);
     assert.deepEqual(commands.find((command) => command.name === 'unban').options.map((option) => option.name), ['retirer', 'liste']);
     assert.ok(commands.some((command) => command.name === 'logs'));
     assert.deepEqual(commands.find((command) => command.name === 'logs').options.map((option) => option.name), ['afficher']);
@@ -58,18 +66,38 @@ describe('slash command definitions', () => {
     assert.deepEqual(commands.find((command) => command.name === 'tickets').options, []);
     assert.equal(commands.find((command) => command.name === 'tickets').default_member_permissions, '32');
     assert.equal(commands.some((command) => command.name === 'ticket'), false);
-    assert.equal(commands.find((command) => command.name === 'panneau-admin').default_member_permissions, '8');
+    assert.equal(commands.some((command) => command.name === 'panneau-admin'), false);
     assert.equal(commands.find((command) => command.name === 'giveaway').default_member_permissions, '32');
     assert.deepEqual(commands.find((command) => command.name === 'giveaway').options.map((option) => option.name), ['lot', 'duree', 'gagnants', 'salon']);
     assert.ok(commands.some((command) => command.name === 'minijeu'));
-    assert.ok(config.options.find((option) => option.name === 'bienvenue').options.some((option) => option.name === 'image'));
-    assert.ok(!config.options.some((option) => ['panneau', 'afficher'].includes(option.name)));
     const helpInteraction = { commandName: 'aide', reply: async (message) => { helpInteraction.response = message; } };
     await handleCommand(helpInteraction);
+    assert.equal(helpInteraction.response.ephemeral, true);
+    assert.equal(helpInteraction.response.components[0].components[0].data.custom_id, 'help:category');
     for (const field of helpInteraction.response.embeds[0].data.fields) {
       assert.ok(field.name.length <= 256, 'help field names fit Discord embed limits');
       assert.ok(field.value.length <= 1024, 'help field values fit Discord embed limits');
     }
+  });
+
+  it('shows related commands in interactive help categories', async () => {
+    const interaction = {
+      isStringSelectMenu: () => true,
+      customId: 'help:category',
+      values: ['members'],
+      update: async (response) => { interaction.response = response; },
+      reply: async (response) => { interaction.response = response; },
+    };
+    assert.equal(await handleHelpInteraction(interaction), true);
+    assert.equal(interaction.response.embeds[0].data.title, '📚 Modération des membres');
+    assert.match(interaction.response.embeds[0].data.description, /\/warn/);
+    assert.match(interaction.response.embeds[0].data.description, /\/ban/);
+    assert.match(interaction.response.embeds[0].data.description, /\/report/);
+    assert.equal(interaction.response.components[0].components[0].data.custom_id, 'help:category');
+
+    interaction.values = ['unknown'];
+    await handleHelpInteraction(interaction);
+    assert.match(interaction.response.content, /catégorie de commandes n’existe pas/);
   });
 
   it('defines an administrator-only voice join and leave command', () => {
@@ -91,72 +119,51 @@ describe('slash command definitions', () => {
     assert.match(response.content, /permission Discord requise/);
   });
 
-  it('displays the administrator access panel and opens its access-key field only for administrators', async () => {
-    const command = {
-      commandName: 'panneau-admin',
-      memberPermissions: { has: () => true },
-      reply: async (response) => { command.response = response; },
-    };
-    await handleCommand(command);
-    assert.equal(command.response.ephemeral, true);
-    assert.equal(command.response.embeds[0].data.title, 'Accès Administrateur');
-    assert.match(command.response.embeds[0].data.description, /Authentification/);
-    assert.equal(command.response.components[0].components[0].data.custom_id, 'admin-panel:authenticate');
-
-    const button = {
-      isButton: () => true,
-      isModalSubmit: () => false,
-      customId: 'admin-panel:authenticate',
-      inGuild: () => true,
-      memberPermissions: { has: () => true },
-      showModal: async (modal) => { button.modal = modal; },
-      reply: async (response) => { button.response = response; },
-    };
-    assert.equal(await handleAdminPanelInteraction(button), true);
-    assert.equal(button.modal.data.title, 'Authentification');
-    assert.equal(button.modal.components[0].components[0].data.label, 'Clés d’accès');
-
-    const submitted = {
-      isButton: () => false,
-      isModalSubmit: () => true,
-      customId: 'admin-panel:authenticate',
-      inGuild: () => true,
-      memberPermissions: { has: () => true },
-      reply: async (response) => { submitted.response = response; },
-    };
-    assert.equal(await handleAdminPanelInteraction(submitted), true);
-    assert.equal(submitted.response.ephemeral, true);
-    assert.match(submitted.response.content, /ne vérifie ni ne stocke la clé saisie/);
-
-    const unauthorized = {
-      ...button,
-      memberPermissions: { has: () => false },
-      reply: async (response) => { unauthorized.response = response; },
-      showModal: async () => assert.fail('Non-administrators must not open the access-key modal'),
-    };
-    await handleAdminPanelInteraction(unauthorized);
-    assert.match(unauthorized.response.content, /permission Discord « Administrateur »/);
-  });
-
   it('opens the Securitas dashboard with all three protection controls', async () => {
     const interaction = {
       commandName: 'securitas',
       guildId: '123456789012345650',
       memberPermissions: { has: () => true },
+      options: { getString: () => null, getAttachment: () => null, getBoolean: () => false },
       reply: async (response) => { interaction.response = response; },
     };
 
     await handleCommand(interaction);
     assert.equal(interaction.response.ephemeral, true);
-    assert.equal(interaction.response.embeds[0].data.title, 'Securitas');
+    assert.equal(interaction.response.embeds[0].data.title, '🛡️ Securitas — configuration du serveur');
+    assert.equal(interaction.response.components[0].components[0].data.custom_id, 'securitas:dashboard');
+
+    const panel = {
+      isButton: () => false,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => true,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'securitas:dashboard',
+      values: ['security'],
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId: interaction.guildId,
+      update: async (response) => { panel.response = response; },
+    };
+    assert.equal(await handleConfigInteraction(panel), true);
+    assert.equal(panel.response.embeds[0].data.title, 'Securitas');
     assert.deepEqual(interaction.response.embeds[0].data.fields.map((field) => field.name), [
-      '🚨 Anti-raid',
-      '💬 Anti-spam',
-      '🔗 Anti-liens',
+      '🛡️ Sécurité',
+      '🎫 Communauté',
+      '📋 Gestion',
     ]);
-    assert.equal(interaction.response.components.length, 5);
-    assert.ok(interaction.response.components.flatMap((row) => row.components)
+    assert.equal(panel.response.components.length, 5);
+    assert.ok(panel.response.components.flatMap((row) => row.components)
       .some((component) => component.data.custom_id === 'warboubou:edit:antiRaid'));
+
+    const ticketsPanel = {
+      ...panel,
+      values: ['tickets'],
+      update: async (response) => { ticketsPanel.response = response; },
+    };
+    assert.equal(await handleConfigInteraction(ticketsPanel), true);
+    assert.equal(ticketsPanel.response.embeds[0].data.title, '🎫 Configuration des tickets');
   });
 
   it('creates a persistent giveaway and accepts each participant only once', async () => {
@@ -470,7 +477,7 @@ describe('moderation commands', () => {
     await handleCommand(interaction);
     assert.equal(replied.ephemeral, true);
     assert.match(replied.embeds[0].data.title, /commandes/i);
-    assert.match(replied.embeds[0].data.fields.map((field) => field.value).join('\n'), /\/config/);
+    assert.match(replied.embeds[0].data.fields.map((field) => field.value).join('\n'), /\/securitas/);
     const persisted = JSON.parse(await readFile(process.env.CONFIG_PATH, 'utf8'));
     assert.equal(persisted.guilds['123456789012345677'], undefined);
   });
@@ -624,17 +631,35 @@ describe('moderation commands', () => {
     });
 
     it('opens the CAPTCHA settings and requires a role before enabling', async () => {
-        const guildId = '123456789012345695';
+      const guildId = '123456789012345695';
       const open = {
-        commandName: 'config',
+        commandName: 'securitas',
         guildId,
         memberPermissions: { has: () => true },
-        options: { getSubcommand: () => 'verification' },
+        options: {
+          getString: () => null,
+          getAttachment: () => null,
+          getBoolean: () => false,
+        },
         reply: async (response) => { open.response = response; },
       };
       await handleCommand(open);
-      assert.equal(open.response.embeds[0].data.title, '🔐 Vérification des nouveaux membres');
-      assert.ok(open.response.components.flatMap((row) => row.components).some((component) => component.data.custom_id === 'config:publish:verification'));
+      const verificationPanel = {
+        isButton: () => false,
+        isModalSubmit: () => false,
+        isStringSelectMenu: () => true,
+        isChannelSelectMenu: () => false,
+        isRoleSelectMenu: () => false,
+        customId: 'securitas:dashboard',
+        values: ['verification'],
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        update: async (response) => { verificationPanel.response = response; },
+      };
+      await handleConfigInteraction(verificationPanel);
+      assert.equal(verificationPanel.response.embeds[0].data.title, '🔐 Vérification des nouveaux membres');
+      assert.ok(verificationPanel.response.components.flatMap((row) => row.components).some((component) => component.data.custom_id === 'config:publish:verification'));
 
       const enable = {
         isButton: () => true,
@@ -942,14 +967,14 @@ describe('moderation commands', () => {
     assert.match(interaction.response.embeds[0].data.description, /Test/);
   });
 
-  it('opens the welcome settings and lets administrators toggle the arrival ping', async () => {
+  it('opens the welcome panel from Securitas and lets administrators toggle the arrival ping', async () => {
     const guildId = '123456789012345684';
     const interaction = {
-      commandName: 'config',
+      commandName: 'securitas',
       guildId,
       memberPermissions: { has: () => true },
       options: {
-        getSubcommand: () => 'bienvenue',
+        getString: () => 'welcome',
         getAttachment: () => null,
         getBoolean: () => false,
       },
@@ -1050,6 +1075,7 @@ describe('moderation commands', () => {
       'config:edit:tickets',
       'config:preview:tickets',
       'config:publish:tickets',
+      'securitas:dashboard',
     ]);
   });
 
@@ -1204,10 +1230,12 @@ describe('persisted announcement images', () => {
 
 describe('member arrival and departure announcements', () => {
   it('announces online and graceful offline states in the configured log channel', async () => {
-    const { handleBotStatus } = await import('../src/member-events.js');
+    const { handleBotStatus, sendSupportAlert } = await import('../src/member-events.js');
     const guildId = '1565306572937232417';
     const settings = await getGuild(guildId);
     settings.logChannelId = '987654321098765438';
+    const version = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+    settings.announcedBotVersion = `${version}-previous`;
     await save();
 
     const sent = [];
@@ -1256,12 +1284,26 @@ describe('member arrival and departure announcements', () => {
     await handleBotStatus(client, 'disconnected', '1006');
     await handleBotStatus(client, 'reconnected');
     await handleBotStatus(client, 'offline', 'test');
-    assert.equal(sent.length, 4);
+    assert.equal(sent.length, 5);
     assert.equal(sent[0].embeds[0].data.title, '🟢 Bot en ligne');
-    assert.equal(sent[1].embeds[0].data.title, '🟠 Connexion Discord interrompue');
-    assert.equal(sent[2].embeds[0].data.title, '🟢 Connexion Discord rétablie');
-    assert.match(sent[3].embeds[0].data.description, /s’arrête proprement \(test\)/);
+    assert.equal(sent[1].embeds[0].data.title, '📦 Mise à jour du bot');
+    assert.match(sent[1].embeds[0].data.description, new RegExp(version));
+    assert.equal(sent[2].embeds[0].data.title, '🟠 Connexion Discord interrompue');
+    assert.equal(sent[3].embeds[0].data.title, '🟢 Connexion Discord rétablie');
+    assert.match(sent[4].embeds[0].data.description, /s’arrête proprement \(test\)/);
     assert.deepEqual(sent[0].allowedMentions, { parse: [] });
+    assert.equal(otherGuildStatusCount, 0);
+    assert.equal(settings.announcedBotVersion, version);
+
+    const resultWithoutSupportServer = await handleBotStatus({
+      user: client.user,
+      guilds: { cache: new Collection([[otherGuild.id, otherGuild]]) },
+    }, 'online');
+    assert.deepEqual(resultWithoutSupportServer, []);
+    assert.equal(await sendSupportAlert({
+      user: client.user,
+      guilds: { cache: new Collection([[otherGuild.id, otherGuild]]) },
+    }, { title: 'Test alert', description: 'Should not be sent elsewhere' }), null);
     assert.equal(otherGuildStatusCount, 0);
   });
 
@@ -1487,8 +1529,37 @@ describe('automatic protections', () => {
     settings.security.antiRaid.protectionMinutes = 10;
     await save();
 
+    const supportGuildId = '1565306572937232417';
+    const supportSettings = await getGuild(supportGuildId);
+    supportSettings.logChannelId = '987654321098765438';
+    await save();
+    const supportAlerts = [];
+    const supportChannel = {
+      id: '987654321098765438',
+      name: 'support-alerts',
+      isTextBased: () => true,
+      permissionsFor: () => ({ has: () => true }),
+      send: async (message) => { supportAlerts.push(message); },
+    };
+    const supportGuild = {
+      id: supportGuildId,
+      name: 'Support server',
+      members: { me: {} },
+      systemChannel: null,
+      channels: {
+        cache: new Collection([[supportChannel.id, supportChannel]]),
+        fetch: async (channelId) => channelId === supportChannel.id ? supportChannel : null,
+      },
+    };
+    const client = {
+      user: { tag: 'ModerationBot#0001' },
+      guilds: { cache: new Collection([[supportGuildId, supportGuild]]) },
+    };
+    supportGuild.client = client;
     const guild = {
       id: guildId,
+      name: 'Protected server',
+      client,
       verificationLevel: GuildVerificationLevel.Low,
       setVerificationLevel: async function setVerificationLevel(level) {
         this.verificationLevel = level;
@@ -1500,5 +1571,9 @@ describe('automatic protections', () => {
 
     assert.equal(guild.verificationLevel, GuildVerificationLevel.VeryHigh);
     assert.ok(settings.security.raidProtection.restoreAt > Date.now());
+    assert.equal(supportAlerts.length, 1);
+    assert.equal(supportAlerts[0].embeds[0].data.title, '🚨 Alerte anti-raid');
+    assert.match(supportAlerts[0].embeds[0].data.description, /Protected server/);
+    assert.deepEqual(supportAlerts[0].allowedMentions, { parse: [] });
   });
 });

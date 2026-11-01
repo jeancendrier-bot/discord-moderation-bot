@@ -5,14 +5,57 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
 } from 'discord.js';
+import { createRequire } from 'node:module';
 import { commands } from './commands.js';
-import { getGuild } from './store.js';
+import { getGuild, save } from './store.js';
 
+const require = createRequire(import.meta.url);
+const { version: botVersion } = require('../package.json');
 const eventLabels = {
   welcome: 'Bienvenue',
   leave: 'Départ',
 };
 const supportServerId = '1565306572937232417';
+
+export async function sendSupportAlert(client, { title, description, color = 0xed4245, originGuildId = null }) {
+  if (!client?.user || !client.guilds?.cache) return null;
+  if (originGuildId === supportServerId) return null;
+  const guild = client.guilds.cache.get(supportServerId);
+  if (!guild) return null;
+
+  const settings = await getGuild(guild.id);
+  const botMember = guild.members.me ?? await guild.members.fetchMe();
+  const configuredChannel = settings.logChannelId
+    ? await guild.channels.fetch(settings.logChannelId).catch((error) => {
+      if ([10003, 50001].includes(Number(error.code))) return null;
+      throw error;
+    })
+    : null;
+  const candidates = [configuredChannel, guild.systemChannel, ...guild.channels.cache.values()]
+    .filter((channel, index, list) => channel && list.indexOf(channel) === index)
+    .filter((channel) => channel.isTextBased() && typeof channel.send === 'function')
+    .filter((channel) => channel.permissionsFor(botMember)?.has([
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+    ]));
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(description)
+    .setTimestamp();
+
+  for (const channel of candidates) {
+    try {
+      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      return { guildId: guild.id, channelId: channel.id };
+    } catch (error) {
+      if (![50001, 50013, 10003].includes(Number(error.code))) throw error;
+      console.warn(`[moderation-bot] Impossible d’envoyer une alerte support dans #${channel.name} (${error.code}).`);
+    }
+  }
+  console.warn(`[moderation-bot] Aucun salon accessible pour les alertes sur le serveur support ${guild.name}.`);
+  return { guildId: guild.id, channelId: null };
+}
 
 async function findBotInviter(guild) {
   try {
@@ -102,50 +145,70 @@ export async function handleBotStatus(client, state, reason = '') {
   const status = statuses[state];
   if (!status) throw new Error(`État de bot inconnu : ${state}`);
   const results = [];
-  for (const guild of client.guilds.cache.values()) {
-    if (guild.id !== supportServerId) continue;
-    try {
-      const settings = await getGuild(guild.id);
-      const botMember = guild.members.me ?? await guild.members.fetchMe();
-      const configuredChannel = settings.logChannelId
-        ? await guild.channels.fetch(settings.logChannelId).catch((error) => {
-          if (Number(error.code) === 10003 || Number(error.code) === 50001) return null;
-          throw error;
-        })
-        : null;
-      const candidates = [configuredChannel, guild.systemChannel, ...guild.channels.cache.values()]
-        .filter((channel, index, list) => channel && list.indexOf(channel) === index)
-        .filter((channel) => channel.isTextBased() && typeof channel.send === 'function')
-        .filter((channel) => channel.permissionsFor(botMember)?.has([
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-        ]));
+  const guild = client.guilds.cache.get(supportServerId);
+  if (!guild) return results;
 
-      const embed = new EmbedBuilder()
-        .setColor(status.color)
-        .setTitle(status.title)
-        .setDescription(status.description)
-        .setTimestamp();
-      let delivered = false;
-      for (const channel of candidates) {
-        try {
-          await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
-          results.push({ guildId: guild.id, channelId: channel.id });
-          delivered = true;
-          break;
-        } catch (error) {
-          if (![50001, 50013, 10003].includes(Number(error.code))) throw error;
-          console.warn(`[moderation-bot] Impossible d’envoyer l’état du bot dans #${channel.name} (${error.code}).`);
-        }
+  try {
+    const settings = await getGuild(guild.id);
+    const botMember = guild.members.me ?? await guild.members.fetchMe();
+    const configuredChannel = settings.logChannelId
+      ? await guild.channels.fetch(settings.logChannelId).catch((error) => {
+        if (Number(error.code) === 10003 || Number(error.code) === 50001) return null;
+        throw error;
+      })
+      : null;
+    const candidates = [configuredChannel, guild.systemChannel, ...guild.channels.cache.values()]
+      .filter((channel, index, list) => channel && list.indexOf(channel) === index)
+      .filter((channel) => channel.isTextBased() && typeof channel.send === 'function')
+      .filter((channel) => channel.permissionsFor(botMember)?.has([
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+      ]));
+
+    let delivered = false;
+    for (const channel of candidates) {
+      try {
+        await channel.send({
+          embeds: [new EmbedBuilder()
+            .setColor(status.color)
+            .setTitle(status.title)
+            .setDescription(status.description)
+            .setTimestamp()],
+          allowedMentions: { parse: [] },
+        });
+        results.push({ guildId: guild.id, channelId: channel.id });
+        delivered = true;
+        break;
+      } catch (error) {
+        if (![50001, 50013, 10003].includes(Number(error.code))) throw error;
+        console.warn(`[moderation-bot] Impossible d’envoyer l’état du bot dans #${channel.name} (${error.code}).`);
       }
-      if (!delivered) {
-        console.warn(`[moderation-bot] Aucun salon accessible pour annoncer l’état du bot sur ${guild.name}.`);
-        results.push({ guildId: guild.id, channelId: null });
-      }
-    } catch (error) {
-      console.error(`[moderation-bot] Annonce d’état impossible sur ${guild.name} :`, error);
-      results.push({ guildId: guild.id, channelId: null, error });
     }
+    if (!delivered) {
+      console.warn(`[moderation-bot] Aucun salon accessible pour annoncer l’état du bot sur ${guild.name}.`);
+      results.push({ guildId: guild.id, channelId: null });
+    }
+    if (state === 'online') {
+      const previousVersion = settings.announcedBotVersion;
+      let shouldRememberVersion = false;
+      if (previousVersion !== botVersion) {
+        const updateNotice = await sendSupportAlert(client, {
+          title: '📦 Mise à jour du bot',
+          description: previousVersion
+            ? `Le bot support est maintenant en version **${botVersion}** (version précédente : **${previousVersion}**).`
+            : `Le bot support est maintenant en version **${botVersion}**. C’est la première version suivie par le système d’alertes.`,
+          color: 0x5865f2,
+        });
+        shouldRememberVersion = Boolean(updateNotice?.channelId);
+      }
+      if (shouldRememberVersion && previousVersion !== botVersion) {
+        settings.announcedBotVersion = botVersion;
+        await save();
+      }
+    }
+  } catch (error) {
+    console.error(`[moderation-bot] Annonce d’état impossible sur ${guild.name} :`, error);
+    results.push({ guildId: guild.id, channelId: null, error });
   }
   return results;
 }

@@ -1,5 +1,6 @@
 import { GuildVerificationLevel, PermissionFlagsBits } from 'discord.js';
 import { getGuild, save } from './store.js';
+import { sendSupportAlert } from './member-events.js';
 
 const spamWindows = new Map();
 const spamCooldowns = new Map();
@@ -37,6 +38,14 @@ const text = {
 
 function messagesFor(settings) {
   return text[settings.security.language] ?? text.fr;
+}
+
+async function notifySupport(client, alert) {
+  try {
+    await sendSupportAlert(client, alert);
+  } catch (error) {
+    console.error('[moderation-bot] Échec de publication d’une alerte sur le serveur support :', error);
+  }
 }
 
 async function sendLog(guild, settings, content) {
@@ -149,6 +158,11 @@ function scheduleRaidRestore(guild, settings) {
       const words = messagesFor(settings);
       console.error(`[moderation-bot] ${words.restoreError}`, error.message);
       await sendLog(guild, settings, words.restoreError);
+      await notifySupport(guild.client, {
+        title: '🚨 Échec de protection anti-raid',
+        description: `Impossible de restaurer le niveau de vérification sur **${guild.name}**. La protection sera réessayée dans une minute.`,
+        originGuildId: guild.id,
+      });
       settings.security.raidProtection.restoreAt = Date.now() + 60_000;
       await save().catch(() => {});
       scheduleRaidRestore(guild, settings);
@@ -187,10 +201,22 @@ export async function handleGuildMemberAdd(member) {
     scheduleRaidRestore(member.guild, settings);
     const words = messagesFor(settings);
     await sendLog(member.guild, settings, words.raidLog(joins.length, antiRaid.protectionMinutes));
+    await notifySupport(member.guild.client, {
+      title: '🚨 Alerte anti-raid',
+      description: `Arrivées massives détectées sur **${member.guild.name}** (${joins.length} nouveaux membres en ${antiRaid.intervalSeconds} s). Le niveau de vérification a été renforcé pendant ${antiRaid.protectionMinutes} minutes.`,
+      color: 0xe67e22,
+      originGuildId: member.guild.id,
+    });
   } catch (error) {
     settings.security.raidProtection = null;
     await save().catch(() => {});
     console.error('[moderation-bot] Activation de la protection anti-raid impossible :', error.message);
+    await notifySupport(member.guild.client, {
+      title: '⚠️ Protection anti-raid non appliquée',
+      description: `Une arrivée massive a été détectée sur **${member.guild.name}**, mais le bot n’a pas pu appliquer le niveau de vérification renforcé.`,
+      color: 0xe67e22,
+      originGuildId: member.guild.id,
+    });
   } finally {
     activeRaids.delete(member.guild.id);
   }
@@ -205,6 +231,11 @@ export async function restoreRaidProtection(client) {
         await restoreVerificationLevel(guild, settings, 'Restauration de la configuration anti-raid après redémarrage');
       } catch (error) {
         console.error('[moderation-bot] Restauration de la protection anti-raid impossible :', error.message);
+        await notifySupport(guild.client, {
+          title: '🚨 Échec de protection anti-raid',
+          description: `Impossible de restaurer le niveau de vérification sur **${guild.name}** après le redémarrage du bot.`,
+          originGuildId: guild.id,
+        });
       }
       continue;
     }

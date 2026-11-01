@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
-import { commands, handleAdminPanelInteraction, handleCommand, handleConfigInteraction, handleTicketInteraction } from './src/commands.js';
+import { commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
 import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
 import { restoreConfiguredVoice } from './src/voice.js';
@@ -21,7 +21,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[moderation-bot] Connecté sous ${c.user.tag} sur ${c.guilds.cache.size} serveur(s).`);
   hasBeenReady = true;
   for (const guildId of c.guilds.cache.keys()) knownGuilds.add(guildId);
-  c.user.setActivity('la sécurité du serveur', { type: 3 });
+  c.user.setActivity('Version 1.0.1', { type: 3 });
   await handleBotStatus(c, 'online');
   await restoreRaidProtection(c).catch((err) => console.error('[moderation-bot] Restauration anti-raid impossible :', err.message));
   await restoreGiveaways(c).catch((err) => console.error('[moderation-bot] Restauration des giveaways impossible :', err));
@@ -86,7 +86,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       || interaction.isRoleSelectMenu()
     ) {
       if (await handleVerificationInteraction(interaction)) return;
-      if (await handleAdminPanelInteraction(interaction)) return;
+      if (await handleHelpInteraction(interaction)) return;
       if (await handleTicketInteraction(interaction)) return;
       if (await handleEntertainmentInteraction(interaction)) return;
       await handleConfigInteraction(interaction);

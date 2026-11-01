@@ -20,15 +20,6 @@ import { startGiveaway, startMiniGame } from './entertainment.js';
 
 const reason = (o) => o.setName('reason').setDescription('Motif communiqué au membre et consigné dans le journal').setMaxLength(400);
 const user = (o) => o.setName('user').setDescription('Membre visé par cette action').setRequired(true);
-const announcementConfiguration = (option, event) => {
-  const isWelcome = event === 'welcome';
-  return option
-    .setName(isWelcome ? 'bienvenue' : 'depart')
-    .setDescription(isWelcome ? 'Ouvrir les réglages interactifs de l’annonce de bienvenue' : 'Ouvrir les réglages interactifs de l’annonce de départ')
-    .addAttachmentOption((o) => o.setName('image').setDescription('Joindre une image PNG, JPEG, GIF ou WebP (8 Mo max)'))
-    .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée actuelle'));
-};
-
 export const commands = [
   new SlashCommandBuilder().setName('aide').setDescription('Consulter les commandes disponibles et les permissions requises'),
   new SlashCommandBuilder().setName('warn').setDescription('Consigner un avertissement officiel à l’intention d’un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -70,20 +61,17 @@ export const commands = [
     .addSubcommand((o) => o.setName('quitter').setDescription('Quitter le salon et désactiver la reconnexion')),
   new SlashCommandBuilder().setName('logs').setDescription('Consulter les dernières entrées du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les dix dernières entrées du journal')),
-  new SlashCommandBuilder().setName('panneau-admin').setDescription('Afficher le panneau d’authentification administrateur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('securitas').setDescription('Gérer les protections anti-raid, anti-spam et anti-liens').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('securitas').setDescription('Ouvrir les panneaux de configuration du serveur').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((o) => o.setName('annonce').setDescription('Ouvrir le panneau de bienvenue ou de départ')
+      .addChoices({ name: 'Bienvenue', value: 'welcome' }, { name: 'Départ', value: 'leave' }))
+    .addAttachmentOption((o) => o.setName('image').setDescription('Joindre une image PNG, JPEG, GIF ou WebP (8 Mo max)'))
+    .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de l’annonce choisie')),
   new SlashCommandBuilder().setName('giveaway').setDescription('Créer un giveaway avec participation par bouton dans un salon textuel').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) => o.setName('lot').setDescription('Lot à gagner').setMaxLength(150).setRequired(true))
     .addIntegerOption((o) => o.setName('duree').setDescription('Durée en minutes (1 à 10 080)').setMinValue(1).setMaxValue(10080).setRequired(true))
     .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de gagnants (1 à 20)').setMinValue(1).setMaxValue(20).setRequired(true))
     .addChannelOption((o) => o.setName('salon').setDescription('Salon textuel de destination ; par défaut, le salon actuel').addChannelTypes(ChannelType.GuildText)),
   new SlashCommandBuilder().setName('minijeu').setDescription('Jouer à pierre-feuille-ciseaux contre le bot'),
-  new SlashCommandBuilder().setName('config').setDescription('Ouvrir les réglages interactifs d’une fonction du serveur').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((o) => o.setName('langue').setDescription('Choisir la langue des notifications avec des boutons'))
-    .addSubcommand((o) => o.setName('journaux').setDescription('Choisir le salon du journal ou le désactiver'))
-    .addSubcommand((option) => announcementConfiguration(option, 'welcome'))
-    .addSubcommand((option) => announcementConfiguration(option, 'leave'))
-    .addSubcommand((o) => o.setName('verification').setDescription('Configurer la vérification CAPTCHA des nouveaux membres')),
   new SlashCommandBuilder().setName('tickets').setDescription('Ouvrir le tableau interactif de gestion des tickets').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
@@ -107,12 +95,77 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   nickname: PermissionFlagsBits.ManageNicknames,
   vocal: PermissionFlagsBits.ManageGuild,
   logs: PermissionFlagsBits.ManageGuild,
-  'panneau-admin': PermissionFlagsBits.Administrator,
   securitas: PermissionFlagsBits.ManageGuild,
   giveaway: PermissionFlagsBits.ManageGuild,
-  config: PermissionFlagsBits.ManageGuild,
   tickets: PermissionFlagsBits.ManageGuild,
 };
+
+const HELP_GROUPS = [
+  {
+    name: 'Modération des membres',
+    value: 'members',
+    description: 'Avertissements, suspensions, exclusions, bannissements et signalements.',
+    permission: 'La permission requise est indiquée par Discord pour chaque commande.',
+    commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'nickname', 'report'],
+  },
+  {
+    name: 'Salons et journal',
+    value: 'channels',
+    description: 'Nettoyage, contrôle des salons, annonces et historique de modération.',
+    permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
+    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal'],
+  },
+  {
+    name: 'Configuration et tickets',
+    value: 'configuration',
+    description: 'Panneaux de sécurité, annonces, CAPTCHA et système de tickets.',
+    permission: 'Gérer le serveur pour configurer ; les tickets dépendent de leur configuration.',
+    commands: ['securitas', 'tickets'],
+  },
+  {
+    name: 'Jeux et animations',
+    value: 'entertainment',
+    description: 'Giveaways avec participation par bouton et mini-jeu privé.',
+    permission: 'Le giveaway nécessite Gérer le serveur ; le mini-jeu est ouvert à tous.',
+    commands: ['giveaway', 'minijeu'],
+  },
+];
+
+function helpPanelEmbed(groupValue = 'home') {
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setFooter({ text: 'Commandes slash • Les permissions dépendent de l’action' });
+  if (groupValue === 'home') {
+    return embed
+      .setTitle('📚 Commandes du bot')
+      .setDescription('Choisissez une catégorie pour voir les commandes correspondantes. Les actions habituelles restent accessibles directement avec `/commande`.')
+      .addFields(HELP_GROUPS.map((group) => ({
+        name: group.name,
+        value: `${group.description}\n${group.commands.map((commandName) => `/${commandName}`).join(' · ')}`,
+      })));
+  }
+  const group = HELP_GROUPS.find((item) => item.value === groupValue);
+  if (!group) return null;
+  return embed
+    .setTitle(`📚 ${group.name}`)
+    .setDescription(group.commands.map((commandName) => {
+      const command = commands.find((entry) => entry.name === commandName);
+      return `**/${commandName}** — ${command.description}`;
+    }).join('\n'))
+    .addFields({ name: 'Permissions', value: group.permission });
+}
+
+function helpPanelComponents() {
+  return [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('help:category')
+      .setPlaceholder('Afficher les commandes par catégorie')
+      .addOptions(
+        { label: 'Toutes les catégories', value: 'home' },
+        ...HELP_GROUPS.map(({ name, value }) => ({ label: name, value })),
+      ),
+  )];
+}
 
 async function log(interaction, settings, action, target, details) {
   if (!settings.logChannelId) return;
@@ -252,6 +305,7 @@ function warBoubouComponents(settings) {
     ),
     new ActionRowBuilder().addComponents(
       configButton('warboubou:set:antiLink:toggle', antiLink.enabled ? 'Désactiver anti-liens' : 'Activer anti-liens', antiLink.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+      configButton('warboubou:clear:antiLinkRole', 'Retirer le rôle exempté', ButtonStyle.Danger),
     ),
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder().setCustomId('warboubou:select:antiLinkMode').setPlaceholder('Choisir les liens à bloquer')
@@ -263,10 +317,39 @@ function warBoubouComponents(settings) {
     new ActionRowBuilder().addComponents(
       new RoleSelectMenuBuilder().setCustomId('warboubou:role:antiLink').setPlaceholder('Choisir le rôle exempté').setMinValues(1).setMaxValues(1),
     ),
-    new ActionRowBuilder().addComponents(
-      configButton('warboubou:clear:antiLinkRole', 'Retirer le rôle exempté', ButtonStyle.Danger),
-    ),
   ];
+}
+
+const SECURITAS_PANEL_OPTIONS = [
+  { label: 'Securitas — protections', value: 'security' },
+  { label: 'Tickets', value: 'tickets' },
+  { label: 'Vérification CAPTCHA', value: 'verification' },
+  { label: 'Journal de modération', value: 'logs' },
+  { label: 'Bienvenue', value: 'welcome' },
+  { label: 'Départ', value: 'leave' },
+  { label: 'Langue', value: 'language' },
+];
+
+function securitasDashboardEmbed() {
+  return new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('🛡️ Securitas — configuration du serveur')
+    .setDescription('Choisissez un panneau dans le menu. Les modifications sont enregistrées immédiatement.')
+    .addFields(
+      { name: '🛡️ Sécurité', value: 'Protections Securitas et vérification CAPTCHA', inline: true },
+      { name: '🎫 Communauté', value: 'Tickets, bienvenue et départ', inline: true },
+      { name: '📋 Gestion', value: 'Journal de modération et langue des notifications', inline: true },
+    )
+    .setFooter({ text: 'Panneau privé • Réservé aux membres ayant Gérer le serveur' });
+}
+
+function securitasDashboardSelect() {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('securitas:dashboard')
+      .setPlaceholder('Ouvrir un panneau de configuration')
+      .addOptions({ label: 'Accueil — tous les panneaux', value: 'home' }, ...SECURITAS_PANEL_OPTIONS),
+  );
 }
 
 function configEmbed(settings, key) {
@@ -428,6 +511,11 @@ function configComponents(settings, key) {
   return rows;
 }
 
+function configPanelComponents(settings, key) {
+  const rows = key === 'security' ? warBoubouComponents(settings) : configComponents(settings, key);
+  return [...rows, securitasDashboardSelect()];
+}
+
 function configModal(customId, title, fields) {
   const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
   for (const field of fields) {
@@ -573,46 +661,11 @@ export async function handleCommand(interaction) {
     return;
   }
   if (name === 'aide') {
-    const groups = [
-      {
-        name: 'Modération',
-        permission: 'Modérer les membres ou disposer de la permission associée à la commande.',
-        commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'report'],
-      },
-      {
-        name: 'Gestion des salons',
-        permission: 'Gérer les messages, les salons, les journaux ou les pseudonymes selon la commande.',
-        commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'nickname', 'logs'],
-      },
-      {
-        name: 'Configuration et assistance',
-        permission: 'Gérer le serveur pour la configuration ; les tickets dépendent de leur configuration.',
-        commands: ['securitas', 'config', 'tickets', 'vocal'],
-      },
-      {
-        name: 'Giveaway et mini-jeu',
-        permission: 'Le giveaway nécessite Gérer le serveur ; le mini-jeu est ouvert à tous.',
-        commands: ['giveaway', 'minijeu'],
-      },
-      {
-        name: 'Administration',
-        permission: 'Le panneau administrateur nécessite la permission Administrateur.',
-        commands: ['panneau-admin'],
-      },
-    ];
-    const embed = new EmbedBuilder()
-      .setTitle('Commandes du bot de modération')
-      .setDescription('Les commandes sont disponibles dans le menu `/`. Certaines nécessitent une permission Discord spécifique.')
-      .setColor(0x5865f2)
-      .addFields(groups.map((group) => ({
-        name: `${group.name} — ${group.permission}`,
-        value: group.commands.map((commandName) => {
-          const command = commands.find((entry) => entry.name === commandName);
-          return `**/${commandName}** — ${command.description}`;
-        }).join('\n'),
-      })))
-      .setFooter({ text: 'Utilisez les options proposées par Discord pour consulter les paramètres de chaque commande.' });
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({
+      embeds: [helpPanelEmbed()],
+      components: helpPanelComponents(),
+      ephemeral: true,
+    });
     return;
   }
 
@@ -620,9 +673,36 @@ export async function handleCommand(interaction) {
   const getReason = () => interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
 
   if (name === 'securitas') {
+    const key = interaction.options.getString('annonce');
+    const attachment = interaction.options.getAttachment('image');
+    const clearImage = interaction.options.getBoolean('effacer_image') ?? false;
+    if ((attachment || clearImage) && !key) {
+      await interaction.reply({ content: 'Choisissez « Bienvenue » ou « Départ » dans l’option annonce pour modifier son image.', ephemeral: true });
+      return;
+    }
+    if (attachment && clearImage) {
+      await interaction.reply({ content: 'Joignez une nouvelle image ou choisissez de supprimer l’image actuelle, mais pas les deux.', ephemeral: true });
+      return;
+    }
+    if (key && (attachment || clearImage)) {
+      await interaction.deferReply({ ephemeral: true });
+      const previousImage = settings[key].imagePath;
+      const imagePath = attachment
+        ? await saveMemberEventImage(interaction.guildId, key, attachment)
+        : null;
+      settings[key].imagePath = imagePath;
+      await save();
+      if (previousImage && previousImage !== imagePath) await removeMemberEventImage(previousImage);
+      await interaction.editReply({
+        embeds: [configEmbed(settings, key)],
+        components: configPanelComponents(settings, key),
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
     await interaction.reply({
-      embeds: [warBoubouEmbed(settings)],
-      components: warBoubouComponents(settings),
+      embeds: [key ? configEmbed(settings, key) : securitasDashboardEmbed()],
+      components: key ? configPanelComponents(settings, key) : [securitasDashboardSelect()],
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -631,24 +711,7 @@ export async function handleCommand(interaction) {
   if (name === 'tickets') {
     await interaction.reply({
       embeds: [configEmbed(settings, 'tickets')],
-      components: configComponents(settings, 'tickets'),
-      ephemeral: true,
-      allowedMentions: { parse: [] },
-    });
-    return;
-  }
-  if (name === 'panneau-admin') {
-    await interaction.reply({
-      embeds: [new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle('Accès Administrateur')
-        .setDescription('**Authentification**\n\nUtilisez le bouton ci-dessous pour ouvrir le champ « Clés d’accès ». Le bot ne vérifie ni ne stocke la clé saisie ; les droits administrateur sont gérés par Discord.')],
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('admin-panel:authenticate')
-          .setLabel('Clés d’accès')
-          .setStyle(ButtonStyle.Primary),
-      )],
+      components: configPanelComponents(settings, 'tickets'),
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -670,7 +733,7 @@ export async function handleCommand(interaction) {
       return;
     }
     if (!settings.logChannelId) {
-      await interaction.reply({ content: 'Le salon des journaux n’est pas configuré. Prévenez un administrateur pour qu’il choisisse un salon avec `/config journaux`.', ephemeral: true });
+      await interaction.reply({ content: 'Le salon des journaux n’est pas configuré. Prévenez un administrateur pour qu’il le choisisse dans `/securitas`.', ephemeral: true });
       return;
     }
     const member = await fetchMember(interaction.guild, target.id);
@@ -740,7 +803,7 @@ export async function handleCommand(interaction) {
   if (name === 'logs') {
     const subcommand = interaction.options.getSubcommand();
     if (!settings.logChannelId) {
-      await interaction.reply({ content: 'Aucun salon de journal n’est configuré. Utilisez `/config journaux` pour en choisir un.', ephemeral: true });
+      await interaction.reply({ content: 'Aucun salon de journal n’est configuré. Utilisez `/securitas` pour en choisir un.', ephemeral: true });
       return;
     }
     await interaction.deferReply({ ephemeral: true });
@@ -782,55 +845,6 @@ export async function handleCommand(interaction) {
     await interaction.deferReply({ ephemeral: true });
     await channel.send({ content: message, allowedMentions: { parse: [] } });
     await interaction.editReply({ content: `Le message a été publié dans <#${channel.id}>. Les mentions ne génèrent aucune notification.` });
-    return;
-  }
-
-  if (name === 'config') {
-    const subcommand = interaction.options.getSubcommand();
-    const configKeys = {
-      langue: 'language',
-      journaux: 'logs',
-      bienvenue: 'welcome',
-      depart: 'leave',
-      verification: 'verification',
-    };
-    const key = configKeys[subcommand];
-    if (!key) {
-      await interaction.reply({ content: 'Choisissez une rubrique de configuration valide.', ephemeral: true });
-      return;
-    }
-
-    if (key === 'welcome' || key === 'leave') {
-      const attachment = interaction.options.getAttachment('image');
-      const clearImage = interaction.options.getBoolean('effacer_image') ?? false;
-      if (attachment && clearImage) {
-        await interaction.reply({ content: 'Joignez une nouvelle image ou choisissez de supprimer l’image actuelle, mais pas les deux.', ephemeral: true });
-        return;
-      }
-      if (attachment || clearImage) {
-        await interaction.deferReply({ ephemeral: true });
-        const previousImage = settings[key].imagePath;
-        const imagePath = attachment
-          ? await saveMemberEventImage(interaction.guildId, key, attachment)
-          : null;
-        settings[key].imagePath = imagePath;
-        await save();
-        if (previousImage && previousImage !== imagePath) await removeMemberEventImage(previousImage);
-        await interaction.editReply({
-          embeds: [configEmbed(settings, key)],
-          components: configComponents(settings, key),
-          allowedMentions: { parse: [] },
-        });
-        return;
-      }
-    }
-
-    await interaction.reply({
-      embeds: [configEmbed(settings, key)],
-      components: configComponents(settings, key),
-      ephemeral: true,
-      allowedMentions: { parse: [] },
-    });
     return;
   }
 
@@ -1051,34 +1065,18 @@ export async function handleCommand(interaction) {
   }
 }
 
-export async function handleAdminPanelInteraction(interaction) {
-  const isButton = interaction.isButton() && interaction.customId === 'admin-panel:authenticate';
-  const isModal = interaction.isModalSubmit() && interaction.customId === 'admin-panel:authenticate';
-  if (!isButton && !isModal) return false;
-  if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'Ce panneau est disponible uniquement sur un serveur Discord.', ephemeral: true });
+export async function handleHelpInteraction(interaction) {
+  if (!interaction.isStringSelectMenu() || interaction.customId !== 'help:category') return false;
+  const [groupValue] = interaction.values;
+  const embed = helpPanelEmbed(groupValue);
+  if (!embed) {
+    await interaction.reply({ content: 'Cette catégorie de commandes n’existe pas.', ephemeral: true });
     return true;
   }
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({ content: 'La permission Discord « Administrateur » est requise.', ephemeral: true });
-    return true;
-  }
-  if (isButton) {
-    const accessKey = new TextInputBuilder()
-      .setCustomId('access-key')
-      .setLabel('Clés d’accès')
-      .setStyle(TextInputStyle.Short)
-      .setMaxLength(100)
-      .setRequired(true);
-    await interaction.showModal(new ModalBuilder()
-      .setCustomId('admin-panel:authenticate')
-      .setTitle('Authentification')
-      .addComponents(new ActionRowBuilder().addComponents(accessKey)));
-    return true;
-  }
-  await interaction.reply({
-    content: 'Cette interface est visuelle uniquement : le bot ne vérifie ni ne stocke la clé saisie. Les droits administrateur sont gérés par Discord.',
-    ephemeral: true,
+  await interaction.update({
+    embeds: [embed],
+    components: helpPanelComponents(),
+    allowedMentions: { parse: [] },
   });
   return true;
 }
@@ -1160,7 +1158,7 @@ export async function handleConfigInteraction(interaction) {
   const isConfigButton = interaction.isButton()
     && (interaction.customId.startsWith('config:') || interaction.customId.startsWith('warboubou:'));
   const isConfigSelect = (interaction.isStringSelectMenu?.() || interaction.isChannelSelectMenu?.() || interaction.isRoleSelectMenu?.())
-    && (interaction.customId.startsWith('config:') || interaction.customId.startsWith('warboubou:'));
+    && (interaction.customId.startsWith('config:') || interaction.customId.startsWith('warboubou:') || interaction.customId === 'securitas:dashboard');
   const isConfigModal = interaction.isModalSubmit()
     && (interaction.customId.startsWith('config:save:') || interaction.customId.startsWith('warboubou:save:'));
   if (!isConfigButton && !isConfigSelect && !isConfigModal) return false;
@@ -1177,7 +1175,7 @@ export async function handleConfigInteraction(interaction) {
   const isWarBoubou = interaction.customId.startsWith('warboubou:');
   const updateConfig = (key) => interaction.update({
     embeds: [isWarBoubou ? warBoubouEmbed(settings) : configEmbed(settings, key)],
-    components: isWarBoubou ? warBoubouComponents(settings) : configComponents(settings, key),
+    components: configPanelComponents(settings, isWarBoubou ? 'security' : key),
     allowedMentions: { parse: [] },
   });
 
@@ -1202,6 +1200,27 @@ export async function handleConfigInteraction(interaction) {
   }
 
   if (isConfigSelect && interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'securitas:dashboard') {
+      const key = interaction.values[0];
+      if (key === 'home') {
+        await interaction.update({
+          embeds: [securitasDashboardEmbed()],
+          components: [securitasDashboardSelect()],
+          allowedMentions: { parse: [] },
+        });
+        return true;
+      }
+      if (!SECURITAS_PANEL_OPTIONS.some((option) => option.value === key)) {
+        await interaction.reply({ content: 'Ce panneau de configuration n’existe pas.', ephemeral: true });
+        return true;
+      }
+      await interaction.update({
+        embeds: [key === 'security' ? warBoubouEmbed(settings) : configEmbed(settings, key)],
+        components: configPanelComponents(settings, key),
+        allowedMentions: { parse: [] },
+      });
+      return true;
+    }
     if (!['config:select:antiLinkMode', 'warboubou:select:antiLinkMode'].includes(interaction.customId)
       || !['invites', 'all'].includes(interaction.values[0])) {
       await interaction.reply({ content: 'Cette option de configuration n’est pas reconnue.', ephemeral: true });
