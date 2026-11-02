@@ -178,8 +178,8 @@ export async function getGuild(guildId) {
     settings.voiceChannelId = null;
     changed = true;
   }
-  if (!Array.isArray(settings.giveaways)) {
-    settings.giveaways = [];
+  if (Object.hasOwn(settings, 'giveaways')) {
+    delete settings.giveaways;
     changed = true;
   }
   for (const [key, defaultMessage] of [

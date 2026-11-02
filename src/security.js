@@ -20,6 +20,7 @@ const text = {
       ? `Le filtre anti-spam a supprimé ${deleted} message(s) de <@${user}> dans <#${channel}> et appliqué une suspension de ${duration} minute(s).`
       : `Le filtre anti-spam a détecté des messages répétés de <@${user}> dans <#${channel}> (suppression : ${deleted} message(s)), mais le bot n’a pas pu appliquer la suspension.`,
     raidLog: (count, duration) => `Une arrivée massive a été détectée (${count} nouveaux membres). Le niveau de vérification du serveur a été renforcé pour ${duration} minute(s).`,
+    raidRefreshLog: (count, duration) => `Une nouvelle vague d’arrivées a été détectée (${count} nouveaux membres dans la fenêtre configurée). La protection anti-raid reste active ${duration} minute(s) supplémentaires.`,
     restoreError: 'La restauration du niveau de vérification après la protection anti-raid a échoué.',
   },
   en: {
@@ -32,6 +33,7 @@ const text = {
       ? `Anti-spam protection removed ${deleted} message(s) from <@${user}> in <#${channel}> and applied a ${duration}-minute timeout.`
       : `Anti-spam protection detected repeated messages from <@${user}> in <#${channel}> (removed: ${deleted}), but the bot could not apply the timeout.`,
     raidLog: (count, duration) => `A join raid was detected (${count} new members). Server verification was raised for ${duration} minute(s).`,
+    raidRefreshLog: (count, duration) => `A new join wave was detected (${count} new members in the configured window). Anti-raid protection will remain active for another ${duration} minute(s).`,
     restoreError: 'Restoring the server verification level after raid protection failed.',
   },
 };
@@ -198,12 +200,24 @@ export async function handleGuildMemberAdd(member) {
       return;
     }
   }
-  if (joins.length < antiRaid.joinThreshold || settings.security.raidProtection?.restoreAt > now || activeRaids.has(member.guild.id)) return;
+  if (joins.length < antiRaid.joinThreshold || activeRaids.has(member.guild.id)) return;
+
+  const activeProtection = settings.security.raidProtection;
+  if (activeProtection?.restoreAt > now) {
+    const extensionCooldown = antiRaid.intervalSeconds * 1000;
+    if (now - (activeProtection.lastExtendedAt ?? 0) < extensionCooldown) return;
+    activeProtection.restoreAt = now + antiRaid.protectionMinutes * 60_000;
+    activeProtection.lastExtendedAt = now;
+    await save();
+    scheduleRaidRestore(member.guild, settings);
+    await sendLog(member.guild, settings, messagesFor(settings).raidRefreshLog(joins.length, antiRaid.protectionMinutes));
+    return;
+  }
 
   activeRaids.add(member.guild.id);
   const originalVerificationLevel = member.guild.verificationLevel;
   const restoreAt = now + antiRaid.protectionMinutes * 60_000;
-  settings.security.raidProtection = { originalVerificationLevel, restoreAt };
+  settings.security.raidProtection = { originalVerificationLevel, restoreAt, lastExtendedAt: now };
   try {
     await save();
     await member.guild.setVerificationLevel(GuildVerificationLevel.VeryHigh, 'Arrivées massives détectées par la protection anti-raid');

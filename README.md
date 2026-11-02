@@ -20,7 +20,7 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 |---|---|
 | `/aide` | Ouvre un panneau privé avec les commandes regroupées par catégorie et leurs permissions. |
 | `/warn user reason` | Consigne un avertissement officiel et en informe le membre par message privé. |
-| `/warnings user` | Consulte les avertissements consignés pour un membre. |
+| `/warnings user [page]` | Consulte le dossier des avertissements (10 par page ; affiche la page la plus récente par défaut). |
 | `/unwarn user number` | Retire un avertissement précis, repéré avec `/warnings`. |
 | `/clearwarnings user` | Supprime les avertissements consignés pour un membre. |
 | `/timeout user minutes [reason]` | Suspend temporairement un membre de la conversation, jusqu’à 28 jours. |
@@ -39,13 +39,9 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 | `/serverinfo` | Affiche le nombre de membres, les salons, la date de création et le propriétaire du serveur. |
 | `/userinfo [user]` | Affiche l’identifiant, les dates de compte/arrivée et les rôles d’un membre. |
 | `/avatar [user]` | Affiche l’avatar d’un membre en grand et fournit son lien. |
+| `/support` | Présente le bot et fournit un bouton pour rejoindre son serveur officiel de support en cas de bogue. |
 | `/sondage question choix1 choix2 duree [choix3] [choix4] [choix5]` | Publie un sondage natif Discord dans le salon actuel ; durée de 1 à 768 heures. Le bot doit avoir **Send Polls**. |
 | `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
-| `/giveaway lot duree gagnants [salon]` | Lance un giveaway avec bouton de participation ; réservé aux membres ayant **Gérer le serveur**. La durée va de 1 minute à 7 jours et le nombre de gagnants de 1 à 20. Par défaut, le giveaway est publié dans le salon actuel ; l’option `salon` permet de choisir un salon textuel. |
-| `/minijeu` | Ouvre un mini-jeu privé de pierre-feuille-ciseaux contre le bot, accessible à tous. |
-| `/quiz` | Lance une question privée de culture générale à choix multiples ; une nouvelle question est tirée à chaque utilisation. |
-| `/de [nombre] [faces]` | Lance de 1 à 10 dés, avec 2 à 100 faces par dé. |
-| `/pileouface` | Tire à pile ou face. |
 
 Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon** et **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son. Il reste dans le salon tant que `/vocal quitter` n’a pas été utilisée. Le salon choisi est conservé dans la configuration persistante : le bot tente de le rejoindre à son démarrage et de rétablir la connexion après une interruption. Utilisez `/vocal quitter` pour désactiver cette reconnexion. Si le bot ou l’hébergeur est arrêté, il ne peut pas rester connecté pendant l’arrêt ; il reviendra au prochain démarrage.
 
@@ -63,9 +59,9 @@ Les commandes de configuration sont réservées aux membres disposant de **Gére
 
 Les modifications sont enregistrées immédiatement. Les notifications de détection sont envoyées dans le salon défini depuis le panneau **Journal de modération** de `/gestion`. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
 
-Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
+Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Si une nouvelle vague d’arrivées dépasse le seuil pendant une protection anti-raid active, sa durée est prolongée et un événement est ajouté au journal du serveur, sans publier une nouvelle alerte support à chaque arrivée. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
 
-`/aide` regroupe les commandes en quatre panneaux : modération des membres, salons et journaux, configuration et tickets, jeux et animations. Les commandes d’action restent disponibles individuellement dans le menu slash de Discord ; les sous-actions proches comme `/unban retirer` et `/unban liste` restent réunies sous `/unban`.
+`/aide` regroupe les commandes en trois panneaux : modération des membres, salons et outils, configuration et tickets. Les commandes de jeux et de tirage au sort ont été retirées. Les commandes d’action restent disponibles individuellement dans le menu slash de Discord ; les sous-actions proches comme `/unban retirer` et `/unban liste` restent réunies sous `/unban`.
 
 ### Vérification CAPTCHA des nouveaux membres
 

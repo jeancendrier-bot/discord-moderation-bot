@@ -14,10 +14,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
-import { randomInt } from 'node:crypto';
 import { getGuild, removeMemberEventImage, save, saveMemberEventImage } from './store.js';
 import { connectConfiguredVoice, disconnectConfiguredVoice } from './voice.js';
-import { startGiveaway, startMiniGame, startQuiz } from './entertainment.js';
 
 const reason = (o) => o.setName('reason').setDescription('Motif communiqué au membre et consigné dans le journal').setMaxLength(400);
 const user = (o) => o.setName('user').setDescription('Membre visé par cette action').setRequired(true);
@@ -25,7 +23,9 @@ export const commands = [
   new SlashCommandBuilder().setName('aide').setDescription('Consulter les commandes disponibles et les permissions requises'),
   new SlashCommandBuilder().setName('warn').setDescription('Consigner un avertissement officiel à l’intention d’un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption(user).addStringOption((o) => reason(o).setRequired(true)),
-  new SlashCommandBuilder().setName('warnings').setDescription('Consulter les avertissements consignés pour un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers).addUserOption(user),
+  new SlashCommandBuilder().setName('warnings').setDescription('Consulter les avertissements consignés pour un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(user)
+    .addIntegerOption((o) => o.setName('page').setDescription('Page à afficher (10 avertissements par page)').setMinValue(1)),
   new SlashCommandBuilder().setName('unwarn').setDescription('Retirer un avertissement précis du dossier d’un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption(user).addIntegerOption((o) => o.setName('number').setDescription('Numéro de l’avertissement affiché dans /warnings').setMinValue(1).setRequired(true)),
   new SlashCommandBuilder().setName('clearwarnings').setDescription('Supprimer les avertissements consignés pour un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers).addUserOption(user),
@@ -54,6 +54,7 @@ export const commands = [
   new SlashCommandBuilder().setName('nickname').setDescription('Définir ou réinitialiser le pseudonyme d’un membre').setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
     .addUserOption(user).addStringOption((o) => o.setName('nickname').setDescription('Nouveau pseudonyme ; laisser vide pour rétablir celui d’origine').setMaxLength(32)).addStringOption(reason),
   new SlashCommandBuilder().setName('serverinfo').setDescription('Afficher les informations principales du serveur'),
+  new SlashCommandBuilder().setName('support').setDescription('Afficher la présentation du bot et rejoindre son serveur de support'),
   new SlashCommandBuilder().setName('userinfo').setDescription('Afficher les informations publiques d’un membre')
     .addUserOption((o) => o.setName('user').setDescription('Membre à consulter ; par défaut, vous-même')),
   new SlashCommandBuilder().setName('avatar').setDescription('Afficher l’avatar d’un membre en grand')
@@ -66,10 +67,6 @@ export const commands = [
     .addStringOption((o) => o.setName('choix3').setDescription('Troisième réponse (facultative)').setMaxLength(55))
     .addStringOption((o) => o.setName('choix4').setDescription('Quatrième réponse (facultative)').setMaxLength(55))
     .addStringOption((o) => o.setName('choix5').setDescription('Cinquième réponse (facultative)').setMaxLength(55)),
-  new SlashCommandBuilder().setName('de').setDescription('Lancer un ou plusieurs dés')
-    .addIntegerOption((o) => o.setName('nombre').setDescription('Nombre de dés (1 à 10)').setMinValue(1).setMaxValue(10))
-    .addIntegerOption((o) => o.setName('faces').setDescription('Nombre de faces par dé (2 à 100)').setMinValue(2).setMaxValue(100)),
-  new SlashCommandBuilder().setName('pileouface').setDescription('Jouer à pile ou face'),
   new SlashCommandBuilder().setName('vocal').setDescription('Gérer la connexion vocale persistante du bot').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('rejoindre').setDescription('Rejoindre et mémoriser le salon vocal')
       .addChannelOption((option) => option.setName('salon').setDescription('Salon vocal à rejoindre').addChannelTypes(ChannelType.GuildVoice).setRequired(true)))
@@ -83,18 +80,28 @@ export const commands = [
     .addAttachmentOption((o) => o.setName('image').setDescription('Joindre une image PNG, JPEG, GIF ou WebP (8 Mo max)'))
     .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de l’annonce choisie')),
   new SlashCommandBuilder().setName('verification').setDescription('Configurer la vérification CAPTCHA des nouveaux membres').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-  new SlashCommandBuilder().setName('giveaway').setDescription('Créer un giveaway avec participation par bouton dans un salon textuel').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addStringOption((o) => o.setName('lot').setDescription('Lot à gagner').setMaxLength(150).setRequired(true))
-    .addIntegerOption((o) => o.setName('duree').setDescription('Durée en minutes (1 à 10 080)').setMinValue(1).setMaxValue(10080).setRequired(true))
-    .addIntegerOption((o) => o.setName('gagnants').setDescription('Nombre de gagnants (1 à 20)').setMinValue(1).setMaxValue(20).setRequired(true))
-    .addChannelOption((o) => o.setName('salon').setDescription('Salon textuel de destination ; par défaut, le salon actuel').addChannelTypes(ChannelType.GuildText)),
-  new SlashCommandBuilder().setName('minijeu').setDescription('Jouer à pierre-feuille-ciseaux contre le bot'),
-  new SlashCommandBuilder().setName('quiz').setDescription('Répondre à une question de culture générale'),
   new SlashCommandBuilder().setName('tickets').setDescription('Ouvrir le tableau interactif de gestion des tickets').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
 const COLORS = { warn: 0xfee75c, timeout: 0xe67e22, untimeout: 0x57f287, kick: 0xed4245, ban: 0x992d22, unban: 0x57f287, purge: 0x5865f2, clearwarnings: 0x57f287, lock: 0xed4245, unlock: 0x57f287, nickname: 0x5865f2 };
 const ACTION_LABELS = { warn: 'Avertissement', unwarn: 'Retrait d’un avertissement', timeout: 'Suspension temporaire', untimeout: 'Levée de suspension', kick: 'Exclusion du serveur', ban: 'Bannissement', unban: 'Levée de bannissement', purge: 'Suppression de messages', clearwarnings: 'Suppression des avertissements', lock: 'Verrouillage du salon', unlock: 'Déverrouillage du salon', nickname: 'Modification du pseudonyme' };
+const ACTION_ICONS = {
+  warn: '⚠️',
+  unwarn: '↩️',
+  timeout: '⏳',
+  untimeout: '✅',
+  kick: '👢',
+  ban: '🔨',
+  unban: '🔓',
+  purge: '🧹',
+  clearwarnings: '🗑️',
+  lock: '🔒',
+  unlock: '🔓',
+  nickname: '✏️',
+};
+const successMessage = (message) => `✅ ${message}`;
+const warningMessage = (message) => `⚠️ ${message}`;
+const formatCount = (count, singular, plural = `${singular}s`) => `${count} ${count === 1 ? singular : plural}`;
 const REQUIRED_COMMAND_PERMISSIONS = {
   warn: PermissionFlagsBits.ModerateMembers,
   warnings: PermissionFlagsBits.ModerateMembers,
@@ -116,13 +123,12 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   securitas: PermissionFlagsBits.ManageGuild,
   gestion: PermissionFlagsBits.ManageGuild,
   verification: PermissionFlagsBits.ManageGuild,
-  giveaway: PermissionFlagsBits.ManageGuild,
   tickets: PermissionFlagsBits.ManageGuild,
 };
 
 const HELP_GROUPS = [
   {
-    name: 'Modération des membres',
+    name: '🛡️ Modération des membres',
     value: 'members',
     description: 'Avertissements, suspensions, exclusions et bannissements.',
     permission: 'La permission requise est indiquée par Discord pour chaque commande.',
@@ -133,21 +139,14 @@ const HELP_GROUPS = [
     value: 'channels',
     description: 'Nettoyage, contrôle des salons, sondages et informations.',
     permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
-    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'userinfo', 'avatar', 'sondage'],
+    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'support', 'userinfo', 'avatar', 'sondage'],
   },
   {
-    name: 'Configuration et tickets',
+    name: '⚙️ Configuration et tickets',
     value: 'configuration',
     description: 'Panneaux de sécurité et de gestion, CAPTCHA et système de tickets.',
     permission: 'Gérer le serveur pour configurer ; les tickets dépendent de leur configuration.',
     commands: ['securitas', 'gestion', 'verification', 'tickets'],
-  },
-  {
-    name: 'Jeux et animations',
-    value: 'entertainment',
-    description: 'Giveaways avec participation par bouton et mini-jeux rapides.',
-    permission: 'Le giveaway nécessite Gérer le serveur ; les mini-jeux sont ouverts à tous.',
-    commands: ['giveaway', 'minijeu', 'quiz', 'de', 'pileouface'],
   },
 ];
 
@@ -157,7 +156,7 @@ function helpPanelEmbed(groupValue = 'home') {
     .setFooter({ text: 'Commandes slash • Les permissions dépendent de l’action' });
   if (groupValue === 'home') {
     return embed
-      .setTitle('📚 Commandes du bot')
+      .setTitle('📚 Centre de commandes')
       .setDescription('Choisissez une catégorie pour voir les commandes correspondantes. Les actions habituelles restent accessibles directement avec `/commande`.')
       .addFields(HELP_GROUPS.map((group) => ({
         name: group.name,
@@ -170,7 +169,14 @@ function helpPanelEmbed(groupValue = 'home') {
     .setTitle(`📚 ${group.name}`)
     .setDescription(group.commands.map((commandName) => {
       const command = commands.find((entry) => entry.name === commandName);
-      return `**/${commandName}** — ${command.description}`;
+      const icon = {
+        logs: '🐛',
+        serverinfo: '👑',
+        support: '🎧',
+        verification: '✅',
+        tickets: '🎧',
+      }[commandName];
+      return `${icon ? `${icon} ` : ''}**/${commandName}** — ${command.description}`;
     }).join('\n'))
     .addFields({ name: 'Permissions', value: group.permission });
 }
@@ -192,12 +198,12 @@ async function log(interaction, settings, action, target, details) {
   const channel = interaction.guild.channels.cache.get(settings.logChannelId);
   if (!channel) return;
   const embed = new EmbedBuilder()
-    .setTitle(ACTION_LABELS[action] ?? action)
+    .setTitle(`${ACTION_ICONS[action] ?? '🛡️'} ${ACTION_LABELS[action] ?? action}`)
     .setColor(COLORS[action] ?? 0x99aab5)
     .addFields(
-      { name: 'Membre concerné', value: target ? `<@${target.id}> (${target.tag ?? target.id})` : 'Aucun', inline: true },
-      { name: 'Action effectuée par', value: `<@${interaction.user.id}>`, inline: true },
-      ...(details ? [{ name: 'Motif et précisions', value: details.slice(0, 1000) }] : []),
+      { name: '👤 Membre concerné', value: target ? `<@${target.id}> (${target.tag ?? target.id})` : 'Aucun', inline: true },
+      { name: '🛡️ Action effectuée par', value: `<@${interaction.user.id}>`, inline: true },
+      ...(details ? [{ name: '📝 Motif et précisions', value: details.slice(0, 1000) }] : []),
     )
     .setTimestamp();
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((err) => console.error('[moderation-bot] Échec de publication dans le journal :', err.message));
@@ -294,7 +300,7 @@ function warBoubouEmbed(settings) {
   const { antiRaid, antiSpam, antiLink } = settings.security;
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('Securitas')
+    .setTitle('🛡️ Securitas')
     .setDescription('Tableau unique des protections automatiques du serveur. Les changements sont enregistrés immédiatement.')
     .addFields(
       {
@@ -341,10 +347,10 @@ function warBoubouComponents(settings) {
 }
 
 const MANAGEMENT_PANEL_OPTIONS = [
-  { label: 'Journal de modération', value: 'logs' },
+  { label: '🐛 Journal de modération', value: 'logs' },
   { label: 'Bienvenue', value: 'welcome' },
   { label: 'Départ', value: 'leave' },
-  { label: 'Langue', value: 'language' },
+  { label: '🇫🇷 Langue', value: 'language' },
 ];
 
 function managementDashboardEmbed() {
@@ -354,8 +360,8 @@ function managementDashboardEmbed() {
     .setDescription('Choisissez le réglage à modifier. Les changements sont enregistrés immédiatement.')
     .addFields(
       { name: '👋 Annonces', value: 'Bienvenue et départ', inline: true },
-      { name: '🌐 Notifications', value: 'Langue des notifications automatiques', inline: true },
-      { name: '📋 Journal', value: 'Salon des journaux et alertes de modération', inline: true },
+      { name: '🇫🇷 Notifications', value: 'Langue des notifications automatiques', inline: true },
+      { name: '🐛 Journal', value: 'Salon des journaux et alertes de modération', inline: true },
     )
     .setFooter({ text: 'Panneau privé • Réservé aux membres ayant Gérer le serveur' });
 }
@@ -383,7 +389,7 @@ function configEmbed(settings, key) {
   if (key === 'language') {
     embed.setTitle('🌐 Langue des notifications')
       .setDescription('Choisissez la langue utilisée par les notifications automatiques du bot.')
-      .addFields({ name: 'Langue actuelle', value: `**${security.language === 'en' ? 'English' : 'Français'}**` });
+      .addFields({ name: 'Langue actuelle', value: security.language === 'en' ? '**🇬🇧 English**' : '**🇫🇷 Français**' });
   } else if (key === 'antiLink') {
     embed.setTitle('🔗 Filtre anti-liens')
       .setDescription('Contrôlez les liens autorisés, choisissez le mode et, si nécessaire, sélectionnez un rôle exempté.')
@@ -409,7 +415,7 @@ function configEmbed(settings, key) {
         { name: 'Durée', value: `**${security.antiRaid.protectionMinutes} min**`, inline: true },
       );
   } else if (key === 'verification') {
-    embed.setTitle('🔐 Vérification des nouveaux membres')
+    embed.setTitle('✅ Vérification des nouveaux membres')
       .setDescription('Un membre doit réussir un CAPTCHA visuel privé pour recevoir le rôle vérifié. Configurez ce rôle et publiez le panneau dans un salon accessible aux nouveaux membres.')
       .addFields(
         { name: 'Protection', value: configStatus(security.verification.enabled), inline: true },
@@ -417,7 +423,7 @@ function configEmbed(settings, key) {
         { name: 'Étape requise sur le serveur', value: 'Limitez l’accès aux salons aux membres portant le rôle vérifié. Laissez le salon du panneau visible pour @everyone.' },
       );
   } else if (key === 'logs') {
-    embed.setTitle('📋 Journal de modération')
+    embed.setTitle('🐛 Journal de modération')
       .setDescription('Les sanctions et les actions de modération seront publiées dans le salon choisi.')
       .addFields({ name: 'Salon actuel', value: configuredChannel(settings.logChannelId) });
   } else if (key === 'welcome' || key === 'leave') {
@@ -435,7 +441,7 @@ function configEmbed(settings, key) {
         { name: 'Variables disponibles', value: '`{user}` · `{username}` · `{server}` · `{memberCount}`' },
       );
   } else if (key === 'tickets') {
-    embed.setTitle('🎫 Configuration des tickets')
+    embed.setTitle('🎧 Support • Configuration des tickets')
       .setDescription('Configurez l’emplacement des demandes, l’équipe responsable et le texte du panneau public.')
       .addFields(
         { name: 'Catégorie', value: configuredChannel(settings.ticketCategoryId), inline: true },
@@ -462,8 +468,8 @@ function configComponents(settings, key) {
   const rows = [];
   if (key === 'language') {
     rows.push(new ActionRowBuilder().addComponents(
-      configButton('config:set:language:fr', 'Français', settings.security.language === 'fr' ? ButtonStyle.Success : ButtonStyle.Secondary),
-      configButton('config:set:language:en', 'English', settings.security.language === 'en' ? ButtonStyle.Success : ButtonStyle.Secondary),
+      configButton('config:set:language:fr', '🇫🇷 Français', settings.security.language === 'fr' ? ButtonStyle.Success : ButtonStyle.Secondary),
+      configButton('config:set:language:en', '🇬🇧 English', settings.security.language === 'en' ? ButtonStyle.Success : ButtonStyle.Secondary),
     ));
   } else if (key === 'antiLink') {
     rows.push(new ActionRowBuilder().addComponents(
@@ -690,6 +696,32 @@ export async function handleCommand(interaction) {
     return;
   }
 
+  if (name === 'support') {
+    const supportUrl = 'https://discord.gg/FXbeGGyVn';
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🛡️ Bot anti-raid, anti-spam et anti-liens')
+      .setDescription('✅ Modération et gestion de serveur')
+      .addFields({
+        name: '🎧 Besoin d’aide ?',
+        value: 'En cas de bogue ou de dysfonctionnement, rejoignez le serveur de support pour prévenir les développeurs.',
+      })
+      .setURL(supportUrl)
+      .setFooter({ text: 'FadeHost • Serveur officiel de support' });
+    await interaction.reply({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Rejoindre le serveur de support')
+          .setStyle(ButtonStyle.Link)
+          .setURL(supportUrl),
+      )],
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+
   const settings = await getGuild(interaction.guildId);
   const getReason = () => interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
 
@@ -719,13 +751,13 @@ export async function handleCommand(interaction) {
       .setColor(0x5865f2)
       .setTitle(`🏠 ${guild.name}`)
       .addFields(
-        { name: 'Membres', value: String(guild.memberCount ?? 'Inconnu'), inline: true },
-        { name: 'Salons textuels', value: String(textChannels), inline: true },
-        { name: 'Salons vocaux', value: String(voiceChannels), inline: true },
-        { name: 'Créé le', value: guild.createdAt ? `<t:${Math.floor(guild.createdAt.getTime() / 1000)}:D>` : 'Inconnu', inline: true },
-        { name: 'Identifiant', value: guild.id, inline: true },
+        { name: '👥 Membres', value: String(guild.memberCount ?? 'Inconnu'), inline: true },
+        { name: '💬 Salons textuels', value: String(textChannels), inline: true },
+        { name: '🔊 Salons vocaux', value: String(voiceChannels), inline: true },
+        { name: '📅 Créé le', value: guild.createdAt ? `<t:${Math.floor(guild.createdAt.getTime() / 1000)}:D>` : 'Inconnu', inline: true },
+        { name: '🆔 Identifiant', value: guild.id, inline: true },
       );
-    if (guild.ownerId) embed.addFields({ name: 'Propriétaire', value: `<@${guild.ownerId}>`, inline: true });
+    if (guild.ownerId) embed.addFields({ name: '👑 Propriétaire', value: `<@${guild.ownerId}>`, inline: true });
     const iconUrl = guild.iconURL?.();
     if (iconUrl) embed.setThumbnail(iconUrl);
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
@@ -739,17 +771,17 @@ export async function handleCommand(interaction) {
       .setTitle(`👤 ${target.tag ?? target.username}`)
       .setThumbnail(target.displayAvatarURL())
       .addFields(
-        { name: 'Identifiant', value: target.id, inline: true },
-        { name: 'Compte créé', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:D>`, inline: true },
-        { name: 'Bot', value: target.bot ? 'Oui' : 'Non', inline: true },
-        { name: 'A rejoint le serveur', value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:D>` : 'Pas membre ou date inconnue', inline: true },
+        { name: '🆔 Identifiant', value: target.id, inline: true },
+        { name: '📅 Compte créé', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:D>`, inline: true },
+        { name: '🤖 Compte automatisé', value: target.bot ? 'Oui' : 'Non', inline: true },
+        { name: '📥 Arrivée sur le serveur', value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:D>` : 'Non membre ou date inconnue', inline: true },
       );
     if (member) {
       const roles = member.roles.cache
         .filter((role) => role.id !== interaction.guildId)
         .map((role) => `<@&${role.id}>`)
         .slice(0, 10);
-      embed.addFields({ name: 'Rôles', value: roles.length ? roles.join(', ') : 'Aucun rôle attribué' });
+      embed.addFields({ name: '🎭 Rôles', value: roles.length ? roles.join(', ') : 'Aucun rôle attribué' });
     }
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     return;
@@ -759,7 +791,7 @@ export async function handleCommand(interaction) {
     const avatarUrl = target.displayAvatarURL({ size: 1024 });
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle(`Avatar de ${target.tag ?? target.username}`)
+      .setTitle(`🖼️ Avatar de ${target.tag ?? target.username}`)
       .setImage(avatarUrl)
       .setURL(avatarUrl);
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
@@ -790,27 +822,7 @@ export async function handleCommand(interaction) {
         allowMultiselect: false,
       },
     });
-    await interaction.editReply({ content: `Le sondage a été publié dans <#${interaction.channelId}>.` });
-    return;
-  }
-  if (name === 'de') {
-    const count = interaction.options.getInteger('nombre') ?? 1;
-    const sides = interaction.options.getInteger('faces') ?? 6;
-    if (count < 1 || count > 10 || sides < 2 || sides > 100) {
-      await interaction.reply({ content: 'Choisissez de 1 à 10 dés et de 2 à 100 faces par dé.', ephemeral: true });
-      return;
-    }
-    const rolls = Array.from({ length: count }, () => randomInt(1, sides + 1));
-    const total = rolls.reduce((sum, roll) => sum + roll, 0);
-    await interaction.reply({
-      content: `🎲 Résultat : ${rolls.join(' + ')}${count > 1 ? ` = **${total}**` : ''}`,
-      allowedMentions: { parse: [] },
-    });
-    return;
-  }
-  if (name === 'pileouface') {
-    const result = randomInt(2) === 0 ? 'Pile' : 'Face';
-    await interaction.reply({ content: `🪙 La pièce est tombée sur **${result}** !` });
+    await interaction.editReply({ content: successMessage(`Le sondage a été publié dans <#${interaction.channelId}>.`) });
     return;
   }
   if (name === 'gestion') {
@@ -858,19 +870,6 @@ export async function handleCommand(interaction) {
     });
     return;
   }
-  if (name === 'giveaway') {
-    await startGiveaway(interaction);
-    return;
-  }
-  if (name === 'minijeu') {
-    await startMiniGame(interaction);
-    return;
-  }
-  if (name === 'quiz') {
-    await startQuiz(interaction);
-    return;
-  }
-
   if (name === 'vocal') {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
       await interaction.reply({ content: 'La permission « Gérer le serveur » est requise pour connecter le bot à un salon vocal.', ephemeral: true });
@@ -881,8 +880,8 @@ export async function handleCommand(interaction) {
       const disconnected = await disconnectConfiguredVoice(interaction.guildId);
       await interaction.reply({
         content: disconnected
-          ? 'Le bot a quitté le salon vocal. Il ne s’y reconnectera pas tant que vous n’aurez pas relancé `/vocal rejoindre`.'
-          : 'Le bot n’était connecté à aucun salon vocal et aucune reconnexion n’était programmée.',
+          ? successMessage('Le bot a quitté le salon vocal. Il ne s’y reconnectera pas tant que vous n’aurez pas relancé `/vocal rejoindre`.')
+            : 'ℹ️ Le bot n’était connecté à aucun salon vocal et aucune reconnexion n’était programmée.',
         ephemeral: true,
       });
       return;
@@ -901,7 +900,7 @@ export async function handleCommand(interaction) {
 
     await interaction.deferReply({ ephemeral: true });
     await connectConfiguredVoice(interaction.guild, channel);
-    await interaction.editReply({ content: `Le bot est maintenant connecté à <#${channel.id}>. Il reste silencieux et ne diffuse pas d’audio.` });
+    await interaction.editReply({ content: successMessage(`Le bot est maintenant connecté à <#${channel.id}>. Il reste silencieux et ne diffuse pas d’audio.`) });
     return;
   }
 
@@ -926,7 +925,7 @@ export async function handleCommand(interaction) {
       return;
     }
     const embed = new EmbedBuilder()
-      .setTitle('Dernières entrées du journal')
+      .setTitle('📋 Dernières entrées du journal')
       .setColor(0x5865f2)
       .setDescription(entries.map((message) => {
         const detail = message.embeds[0]
@@ -949,7 +948,7 @@ export async function handleCommand(interaction) {
     const message = interaction.options.getString('message', true);
     await interaction.deferReply({ ephemeral: true });
     await channel.send({ content: message, allowedMentions: { parse: [] } });
-    await interaction.editReply({ content: `Le message a été publié dans <#${channel.id}>. Les mentions ne génèrent aucune notification.` });
+    await interaction.editReply({ content: successMessage(`Le message a été publié dans <#${channel.id}>. Les mentions ne génèrent aucune notification.`) });
     return;
   }
 
@@ -966,12 +965,12 @@ export async function handleCommand(interaction) {
     const cutoff = Date.now() - 13 * 24 * 3600 * 1000;
     const candidates = [...fetched.values()].filter((m) => m.createdTimestamp > cutoff && (!from || m.author.id === from.id)).slice(0, amount);
     if (candidates.length === 0) {
-      await interaction.editReply({ content: 'Aucun message récent ne correspond aux critères de suppression dans ce salon.' });
+      await interaction.editReply({ content: `ℹ️ Aucun message récent ne correspond aux critères de suppression dans ce salon.` });
       return;
     }
     const deleted = await channel.bulkDelete(candidates, true);
-    await interaction.editReply({ content: `${deleted.size} message(s) ont été supprimés dans ce salon.` });
-    await log(interaction, settings, 'purge', from, `${deleted.size} message(s) supprimé(s) dans <#${interaction.channelId}>`);
+    await interaction.editReply({ content: successMessage(`${formatCount(deleted.size, 'message', 'messages')} ${deleted.size === 1 ? 'a été supprimé' : 'ont été supprimés'} dans ce salon.`) });
+    await log(interaction, settings, 'purge', from, `${formatCount(deleted.size, 'message supprimé', 'messages supprimés')} dans <#${interaction.channelId}>`);
     return;
   }
 
@@ -984,7 +983,11 @@ export async function handleCommand(interaction) {
     const seconds = interaction.options.getInteger('seconds');
     await interaction.deferReply({ ephemeral: true });
     await channel.setRateLimitPerUser(seconds);
-    await interaction.editReply({ content: seconds === 0 ? 'Le mode lent a été désactivé dans ce salon.' : `Le mode lent a été défini à un message toutes les ${seconds} seconde(s).` });
+    await interaction.editReply({
+      content: seconds === 0
+        ? successMessage('Le mode lent a été désactivé dans ce salon.')
+        : successMessage(`Le mode lent a été défini à un message toutes les ${formatCount(seconds, 'seconde')}.`),
+    });
     return;
   }
 
@@ -997,7 +1000,11 @@ export async function handleCommand(interaction) {
     await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
       SendMessages: name === 'lock' ? false : null,
     });
-    await interaction.editReply({ content: name === 'lock' ? 'Le salon a été verrouillé. Les membres ne peuvent plus y envoyer de messages.' : 'Le salon a été déverrouillé. Les membres peuvent de nouveau y envoyer des messages.' });
+    await interaction.editReply({
+      content: successMessage(name === 'lock'
+        ? 'Le salon a été verrouillé. Les membres ne peuvent plus y envoyer de messages.'
+        : 'Le salon a été déverrouillé. Les membres peuvent de nouveau y envoyer des messages.'),
+    });
     await log(interaction, settings, name, null, `<#${interaction.channelId}>`);
     return;
   }
@@ -1008,7 +1015,7 @@ export async function handleCommand(interaction) {
       await interaction.deferReply({ ephemeral: true });
       const bans = await interaction.guild.bans.fetch();
       if (bans.size === 0) {
-        await interaction.editReply({ content: 'Aucun compte n’est actuellement banni de ce serveur.' });
+        await interaction.editReply({ content: 'ℹ️ Aucun compte n’est actuellement banni de ce serveur.' });
         return;
       }
       const pageSize = 20;
@@ -1016,10 +1023,10 @@ export async function handleCommand(interaction) {
       const page = Math.min(interaction.options.getInteger('page') ?? 1, pageCount);
       const entries = [...bans.values()].slice((page - 1) * pageSize, page * pageSize);
       const embed = new EmbedBuilder()
-        .setTitle('Comptes bannis')
+        .setTitle('🔨 Comptes bannis')
         .setColor(0xed4245)
         .setDescription(entries.map((ban) => `• **${ban.user.username}** — \`${ban.user.id}\`${ban.reason ? ` — ${ban.reason.slice(0, 180)}` : ''}`).join('\n').slice(0, 4000))
-        .setFooter({ text: `Page ${page}/${pageCount} · ${bans.size} compte(s)` });
+        .setFooter({ text: `Page ${page}/${pageCount} · ${formatCount(bans.size, 'compte', 'comptes')}` });
       await interaction.editReply({ embeds: [embed], allowedMentions: { parse: [] } });
       return;
     }
@@ -1030,7 +1037,7 @@ export async function handleCommand(interaction) {
     }
     await interaction.deferReply({ ephemeral: true });
     await interaction.guild.members.unban(id, getReason());
-    await interaction.editReply({ content: `Le bannissement du compte portant l’identifiant ${id} a été levé.` });
+    await interaction.editReply({ content: successMessage(`Le bannissement du compte portant l’identifiant ${id} a été levé.`) });
     await log(interaction, settings, 'unban', { id, tag: id }, null);
     return;
   }
@@ -1051,22 +1058,41 @@ export async function handleCommand(interaction) {
     const nickname = interaction.options.getString('nickname');
     await interaction.deferReply();
     await member.setNickname(nickname, getReason());
-    await interaction.editReply({ content: nickname ? `Le pseudonyme de ${target.tag} a été défini sur « ${nickname} ».` : `Le pseudonyme de ${target.tag} a été réinitialisé.` });
+    await interaction.editReply({
+      content: successMessage(nickname
+        ? `Le pseudonyme de ${target.tag} a été défini sur « ${nickname} ».`
+        : `Le pseudonyme de ${target.tag} a été réinitialisé.`),
+    });
     await log(interaction, settings, 'nickname', target, nickname || 'Pseudonyme réinitialisé');
     return;
   }
 
   if (name === 'warnings') {
     const list = settings.warnings[target.id] ?? [];
-    const entries = list.slice(-10).map((warning, index) => `${list.length - Math.min(list.length, 10) + index + 1}. ${warning.reason} (par <@${warning.by}>, <t:${Math.floor(warning.at / 1000)}:R>)`);
-    const warningText = list.length === 0
-      ? `Aucun avertissement n’est consigné pour ${target.tag}.`
-      : `Avertissements consignés pour ${target.tag} (les 10 plus récents au maximum) :\n${entries.join('\n')}`;
-    await interaction.reply({
-      content: warningText.slice(0, 1900),
-      ephemeral: true,
-      allowedMentions: { parse: [] },
-    });
+    if (list.length === 0) {
+      await interaction.reply({ content: `ℹ️ Aucun avertissement n’est consigné pour ${target.tag}.`, ephemeral: true });
+      return;
+    }
+    const pageSize = 10;
+    const pageCount = Math.ceil(list.length / pageSize);
+    const page = interaction.options.getInteger('page') ?? pageCount;
+    if (!Number.isSafeInteger(page) || page < 1 || page > pageCount) {
+      await interaction.reply({
+        content: `⚠️ Cette page n’existe pas. ${target.tag} a ${formatCount(list.length, 'avertissement', 'avertissements')} sur ${formatCount(pageCount, 'page')}.`,
+        ephemeral: true,
+      });
+      return;
+    }
+    const startIndex = (page - 1) * pageSize;
+    const embed = new EmbedBuilder()
+      .setColor(0xfee75c)
+      .setTitle(`⚠️ Avertissements de ${target.tag}`)
+      .setDescription(`Page ${page}/${pageCount} • ${formatCount(list.length, 'avertissement', 'avertissements')} au total`)
+      .addFields(list.slice(startIndex, startIndex + pageSize).map((warning, index) => ({
+        name: `N° ${startIndex + index + 1}`,
+        value: `${warning.reason}\nPar <@${warning.by}> • <t:${Math.floor(warning.at / 1000)}:R>`,
+      })));
+    await interaction.reply({ embeds: [embed], ephemeral: true, allowedMentions: { parse: [] } });
     return;
   }
 
@@ -1074,23 +1100,31 @@ export async function handleCommand(interaction) {
     const list = settings.warnings[target.id] ?? [];
     const number = interaction.options.getInteger('number', true);
     if (!Number.isSafeInteger(number) || number < 1 || number > list.length) {
-      await interaction.reply({ content: `Cet avertissement n’existe pas. ${target.tag} a actuellement ${list.length} avertissement(s).`, ephemeral: true });
+      await interaction.reply({ content: `⚠️ Cet avertissement n’existe pas. ${target.tag} a actuellement ${formatCount(list.length, 'avertissement', 'avertissements')}.`, ephemeral: true });
       return;
     }
     const [removed] = list.splice(number - 1, 1);
     if (list.length === 0) delete settings.warnings[target.id];
     await interaction.deferReply({ ephemeral: true });
     await save();
-    await interaction.editReply({ content: `L’avertissement n° ${number} de ${target.tag} a été retiré.`, allowedMentions: { parse: [] } });
+    await interaction.editReply({ content: successMessage(`L’avertissement n° ${number} de ${target.tag} a été retiré.`), allowedMentions: { parse: [] } });
     await log(interaction, settings, 'unwarn', target, `Avertissement n° ${number} retiré : ${removed.reason}`);
     return;
   }
 
   if (name === 'clearwarnings') {
+    const list = settings.warnings[target.id] ?? [];
+    if (list.length === 0) {
+      await interaction.reply({ content: `ℹ️ Aucun avertissement n’est consigné pour ${target.tag}.`, ephemeral: true });
+      return;
+    }
     delete settings.warnings[target.id];
     await interaction.deferReply({ ephemeral: true });
     await save();
-    await interaction.editReply({ content: `Les avertissements consignés pour ${target.tag} ont été supprimés.` });
+    const warningCount = formatCount(list.length, 'avertissement consigné', 'avertissements consignés');
+    await interaction.editReply({
+      content: successMessage(`${warningCount} pour ${target.tag} ${list.length === 1 ? 'a été supprimé' : 'ont été supprimés'}.`),
+    });
     await log(interaction, settings, 'clearwarnings', target, null);
     return;
   }
@@ -1113,7 +1147,7 @@ export async function handleCommand(interaction) {
     await interaction.deferReply();
     await save();
     await tell(target, interaction.guild, `Un avertissement a été consigné à votre encontre (avertissement n° ${list.length}).\nMotif : ${why}`);
-    await interaction.editReply({ content: `Un avertissement a été consigné pour ${target.tag} (${list.length} au total). Motif : ${why}`, allowedMentions: { parse: [] } });
+    await interaction.editReply({ content: successMessage(`Un avertissement a été consigné pour ${target.tag} (${formatCount(list.length, 'avertissement', 'avertissements')} au total). Motif : ${why}`), allowedMentions: { parse: [] } });
     await log(interaction, settings, 'warn', target, `${why} (avertissement n° ${list.length})`);
     return;
   }
@@ -1127,9 +1161,9 @@ export async function handleCommand(interaction) {
     const why = getReason();
     await interaction.deferReply();
     await member.timeout(minutes * 60 * 1000, why);
-    await tell(target, interaction.guild, `Votre droit de participer à la conversation a été suspendu pour ${minutes} minute(s).\nMotif : ${why}`);
-    await interaction.editReply({ content: `La participation de ${target.tag} à la conversation a été suspendue pour ${minutes} minute(s). Motif : ${why}`, allowedMentions: { parse: [] } });
-    await log(interaction, settings, 'timeout', target, `${minutes} minute(s): ${why}`);
+    await tell(target, interaction.guild, `Votre droit de participer à la conversation a été suspendu pour ${formatCount(minutes, 'minute')}.\nMotif : ${why}`);
+    await interaction.editReply({ content: successMessage(`La participation de ${target.tag} à la conversation a été suspendue pour ${formatCount(minutes, 'minute')}. Motif : ${why}`), allowedMentions: { parse: [] } });
+    await log(interaction, settings, 'timeout', target, `${formatCount(minutes, 'minute')} : ${why}`);
     return;
   }
 
@@ -1140,7 +1174,7 @@ export async function handleCommand(interaction) {
     }
     await interaction.deferReply();
     await member.timeout(null);
-    await interaction.editReply({ content: `La suspension temporaire de prise de parole a pris fin pour ${target.tag}.` });
+    await interaction.editReply({ content: successMessage(`La suspension temporaire de prise de parole a pris fin pour ${target.tag}.`) });
     await log(interaction, settings, 'untimeout', target, null);
     return;
   }
@@ -1154,7 +1188,7 @@ export async function handleCommand(interaction) {
     await interaction.deferReply();
     await member.kick(why);
     await tell(target, interaction.guild, `Vous avez été exclu du serveur.\nMotif : ${why}`);
-    await interaction.editReply({ content: `${target.tag} a été exclu du serveur. Motif : ${why}`, allowedMentions: { parse: [] } });
+    await interaction.editReply({ content: successMessage(`${target.tag} a été exclu du serveur. Motif : ${why}`), allowedMentions: { parse: [] } });
     await log(interaction, settings, 'kick', target, why);
     return;
   }
@@ -1165,7 +1199,7 @@ export async function handleCommand(interaction) {
     await interaction.deferReply();
     await interaction.guild.members.ban(target.id, { reason: why, deleteMessageSeconds: days * 24 * 3600 });
     await tell(target, interaction.guild, `Vous avez été banni du serveur.\nMotif : ${why}`);
-    await interaction.editReply({ content: `${target.tag} a été banni du serveur. Motif : ${why}`, allowedMentions: { parse: [] } });
+    await interaction.editReply({ content: successMessage(`${target.tag} a été banni du serveur. Motif : ${why}`), allowedMentions: { parse: [] } });
     await log(interaction, settings, 'ban', target, why);
   }
 }
@@ -1249,7 +1283,7 @@ export async function handleTicketInteraction(interaction) {
     await interaction.deferReply({ ephemeral: true });
     await closeTicket(interaction.channel, ownerId, settings.ticketSupportRoleId);
     await interaction.message.edit({ components: ticketCloseComponents(true) });
-    await interaction.editReply({ content: 'Le ticket a été clôturé. Son historique reste accessible à l’équipe de support.' });
+    await interaction.editReply({ content: successMessage('Le ticket a été clôturé. Son historique reste accessible à l’équipe de support.') });
     return true;
   }
 
@@ -1258,15 +1292,15 @@ export async function handleTicketInteraction(interaction) {
   const subject = interaction.fields.getTextInputValue('subject').trim();
   const details = interaction.fields.getTextInputValue('details').trim();
   if (!subject || !details) {
-    await interaction.editReply({ content: 'Le sujet et la description doivent être renseignés.' });
+    await interaction.editReply({ content: warningMessage('Le sujet et la description doivent être renseignés.') });
     return true;
   }
   const result = await createTicket(interaction.guild, interaction.user, interaction.client, settings, subject, details);
   const response = {
-    created: `Votre ticket a été créé : <#${result.channel.id}>.`,
-    existing: `Vous avez déjà un ticket ouvert : <#${result.channel.id}>.`,
-    pending: 'La création de votre ticket est déjà en cours. Veuillez patienter quelques secondes.',
-    unconfigured: 'Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/tickets`.',
+    created: successMessage(`Votre ticket a été créé : <#${result.channel.id}>.`),
+    existing: `ℹ️ Vous avez déjà un ticket ouvert : <#${result.channel.id}>.`,
+    pending: '⏳ La création de votre ticket est déjà en cours. Veuillez patienter quelques secondes.',
+    unconfigured: warningMessage('Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/tickets`.'),
   };
   await interaction.editReply({ content: response[result.status] });
   return true;

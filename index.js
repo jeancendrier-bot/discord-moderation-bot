@@ -4,7 +4,6 @@ import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from
 import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
 import { restoreConfiguredVoice } from './src/voice.js';
 import { handleVerificationInteraction } from './src/verification.js';
-import { handleEntertainmentInteraction, restoreGiveaways } from './src/entertainment.js';
 
 const token = (process.env.DISCORD_TOKEN || '').trim();
 if (!token) {
@@ -24,7 +23,6 @@ client.once(Events.ClientReady, async (c) => {
   c.user.setActivity('Version 1.0.1', { type: 3 });
   await handleBotStatus(c, 'online');
   await restoreRaidProtection(c).catch((err) => console.error('[moderation-bot] Restauration anti-raid impossible :', err.message));
-  await restoreGiveaways(c).catch((err) => console.error('[moderation-bot] Restauration des giveaways impossible :', err));
   for (const guild of c.guilds.cache.values()) {
     restoreConfiguredVoice(guild).catch((err) => console.error(`[moderation-bot] Restauration vocale impossible sur ${guild.id} :`, err));
   }
@@ -85,10 +83,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       || interaction.isChannelSelectMenu()
       || interaction.isRoleSelectMenu()
     ) {
+      if (interaction.isButton() && interaction.customId.startsWith('giveaway:join:')) {
+        await interaction.reply({
+          content: 'Les commandes de jeux et de tirage au sort ont été retirées de ce bot.',
+          ephemeral: true,
+        });
+        return;
+      }
       if (await handleVerificationInteraction(interaction)) return;
       if (await handleHelpInteraction(interaction)) return;
       if (await handleTicketInteraction(interaction)) return;
-      if (await handleEntertainmentInteraction(interaction)) return;
       await handleConfigInteraction(interaction);
       return;
     }
