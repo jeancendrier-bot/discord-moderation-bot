@@ -39,7 +39,7 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 | `/serverinfo` | Affiche le nombre de membres, les salons, la date de création et le propriétaire du serveur. |
 | `/userinfo [user]` | Affiche l’identifiant, les dates de compte/arrivée et les rôles d’un membre. |
 | `/avatar [user]` | Affiche l’avatar d’un membre en grand et fournit son lien. |
-| `/support` | Présente le bot et fournit un bouton pour rejoindre son serveur officiel de support en cas de bogue. |
+| `/support` | Présente les principales protections et outils du bot, crédite ses créateurs et fournit un bouton vers le support officiel. Pour faciliter le diagnostic, indiquez la commande concernée et le message d’erreur ; ne partagez jamais votre jeton. |
 | `/sondage question choix1 choix2 duree [choix3] [choix4] [choix5]` | Publie un sondage natif Discord dans le salon actuel ; durée de 1 à 768 heures. Le bot doit avoir **Send Polls**. |
 | `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
 
@@ -57,11 +57,11 @@ Les commandes de configuration sont réservées aux membres disposant de **Gére
 | `/verification` | Panneau indépendant pour configurer la vérification CAPTCHA des nouveaux membres. |
 | `/tickets` | Raccourci direct vers le panneau interactif des tickets : catégorie, rôle support, texte, aperçu et publication. |
 
-Les modifications sont enregistrées immédiatement. Les notifications de détection sont envoyées dans le salon défini depuis le panneau **Journal de modération** de `/gestion`. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
+Les modifications sont enregistrées immédiatement. Configurez un salon dans **Journal de modération** via `/gestion` pour recevoir un rapport à chaque commande slash utilisée sur le serveur : commande et sous-commande, membre, salon et date. Les arguments et motifs ne sont pas recopiés dans ces rapports. Les sanctions et autres actions de modération conservent leurs entrées détaillées distinctes. Les notifications de détection sont également envoyées dans ce salon. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
 
 Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Si une nouvelle vague d’arrivées dépasse le seuil pendant une protection anti-raid active, sa durée est prolongée et un événement est ajouté au journal du serveur, sans publier une nouvelle alerte support à chaque arrivée. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
 
-`/aide` regroupe les commandes en trois panneaux : modération des membres, salons et outils, configuration et tickets. Les commandes de jeux et de tirage au sort ont été retirées. Les commandes d’action restent disponibles individuellement dans le menu slash de Discord ; les sous-actions proches comme `/unban retirer` et `/unban liste` restent réunies sous `/unban`.
+`/aide` regroupe les commandes en trois panneaux : modération des membres, salons et outils, configuration et tickets. Les logos personnalisés correspondants sont affichés lorsqu’ils sont accessibles au bot ; sinon, une icône standard est utilisée. Les commandes de jeux et de tirage au sort ont été retirées. Les commandes d’action restent disponibles individuellement dans le menu slash de Discord ; les sous-actions proches comme `/unban retirer` et `/unban liste` restent réunies sous `/unban`.
 
 ### Vérification CAPTCHA des nouveaux membres
 

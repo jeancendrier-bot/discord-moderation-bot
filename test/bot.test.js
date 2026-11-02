@@ -17,13 +17,33 @@ let rawHandleConfigInteraction;
 let handleHelpInteraction;
 let handleTicketInteraction;
 let handleVerificationInteraction;
+let logCommandUsage;
 let security;
+
+function clientWithCustomEmojis() {
+  const emojiNames = [
+    '479369king',
+    '697211bughunter',
+    '4535franceyees',
+    '829331discordstaff',
+    '3763verifiedgreen',
+    '269160support',
+  ];
+  return {
+    emojis: {
+      cache: new Collection(emojiNames.map((name, index) => {
+      const id = String(100000000000000000n + BigInt(index));
+      return [id, { id, name, animated: false, toString: () => `<:${name}:${id}>` }];
+      })),
+    },
+  };
+}
 
 before(async () => {
   dataDirectory = await mkdtemp(join(tmpdir(), 'moderation-bot-test-'));
   process.env.CONFIG_PATH = join(dataDirectory, 'config.json');
   ({ getGuild, removeMemberEventImage, save, saveMemberEventImage } = await import('../src/store.js'));
-  ({ commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction } = await import('../src/commands.js'));
+  ({ commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction, logCommandUsage } = await import('../src/commands.js'));
   rawHandleConfigInteraction = handleConfigInteraction;
   const configHandler = handleConfigInteraction;
   handleConfigInteraction = async (interaction) => {
@@ -116,16 +136,19 @@ describe('slash command definitions', () => {
     assert.equal(interaction.response.embeds[0].data.title, '📚 🛡️ Modération des membres');
     assert.match(interaction.response.embeds[0].data.description, /\/warn/);
     assert.match(interaction.response.embeds[0].data.description, /\/ban/);
+    assert.match(interaction.response.embeds[0].data.description, /⚠️ \*\*\/warn\*\*/);
+    assert.match(interaction.response.embeds[0].data.description, /🔨 \*\*\/ban\*\*/);
     assert.equal(interaction.response.components[0].components[0].data.custom_id, 'help:category');
 
     interaction.values = ['channels'];
     await handleHelpInteraction(interaction);
     assert.match(interaction.response.embeds[0].data.description, /🐛 \*\*\/logs\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /👑 \*\*\/serverinfo\*\*/);
+    assert.match(interaction.response.embeds[0].data.description, /🏠 \*\*\/serverinfo\*\*/);
+    assert.match(interaction.response.embeds[0].data.description, /🎧 \*\*\/support\*\*/);
     interaction.values = ['configuration'];
     await handleHelpInteraction(interaction);
     assert.match(interaction.response.embeds[0].data.description, /✅ \*\*\/verification\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /🎧 \*\*\/tickets\*\*/);
+    assert.match(interaction.response.embeds[0].data.description, /🎟️ \*\*\/tickets\*\*/);
 
     interaction.values = ['unknown'];
     await handleHelpInteraction(interaction);
@@ -135,6 +158,7 @@ describe('slash command definitions', () => {
   it('shows the bot description and support invite from /support', async () => {
     const interaction = {
       commandName: 'support',
+      client: clientWithCustomEmojis(),
       reply: async (response) => { interaction.response = response; },
     };
 
@@ -142,11 +166,128 @@ describe('slash command definitions', () => {
 
     const [embed] = interaction.response.embeds;
     assert.equal(interaction.response.ephemeral, true);
-    assert.equal(embed.data.title, '🛡️ Bot anti-raid, anti-spam et anti-liens');
-    assert.equal(embed.data.description, '✅ Modération et gestion de serveur');
-    assert.match(embed.data.fields[0].value, /bogue ou de dysfonctionnement/);
+    assert.match(embed.data.title, /^<:829331discordstaff:100000000000000003> FadeHost \| Modération et protection$/);
+    assert.match(embed.data.description, /protéger et simplifier la gestion/);
+    assert.match(embed.data.fields[0].value, /raids, le spam et les liens indésirables/);
+    assert.match(embed.data.fields[1].value, /bogue ou avez besoin d’aide/);
+    assert.match(embed.data.fields[1].value, /message d’erreur affiché/);
+    assert.match(embed.data.fields[2].name, /<:479369king:\d{17,20}> Créateurs/);
+    assert.equal(embed.data.fields[2].value, 'hi_o0fh et tixeemtv');
+    assert.match(embed.data.footer.text, /ne jamais partager votre jeton/);
     assert.match(embed.data.url, /^https:\/\/discord\.gg\/FXbeGGyVn$/);
     assert.equal(interaction.response.components[0].components[0].data.url, embed.data.url);
+    assert.equal(interaction.response.components[0].components[0].data.label, 'Ouvrir le serveur officiel de support');
+    assert.match(embed.data.title, /<:829331discordstaff:\d{17,20}>/);
+    assert.match(embed.data.description, /<:3763verifiedgreen:\d{17,20}>/);
+    assert.match(embed.data.fields[0].name, /<:829331discordstaff:\d{17,20}>/);
+    assert.match(embed.data.fields[1].name, /<:269160support:\d{17,20}>/);
+  });
+
+  it('uses the available custom logos throughout help categories and command entries', async () => {
+    const interaction = {
+      isStringSelectMenu: () => true,
+      customId: 'help:category',
+      values: ['channels'],
+      user: { id: '123456789012345000' },
+      client: clientWithCustomEmojis(),
+      message: { interactionMetadata: { user: { id: '123456789012345000' } } },
+      update: async (response) => { interaction.response = response; },
+      reply: async (response) => { interaction.response = response; },
+    };
+
+    await handleHelpInteraction(interaction);
+    const channels = interaction.response.embeds[0].data.description;
+    assert.match(channels, /<:697211bughunter:\d{17,20}> \*\*\/logs\*\*/);
+    assert.match(channels, /<:479369king:\d{17,20}> \*\*\/serverinfo\*\*/);
+    assert.match(channels, /<:269160support:\d{17,20}> \*\*\/support\*\*/);
+
+    interaction.values = ['members'];
+    await handleHelpInteraction(interaction);
+    assert.match(interaction.response.embeds[0].data.title, /<:829331discordstaff:\d{17,20}>/);
+    assert.match(interaction.response.embeds[0].data.description, /<:829331discordstaff:\d{17,20}> \*\*\/warn\*\*/);
+
+    interaction.values = ['configuration'];
+    await handleHelpInteraction(interaction);
+    assert.match(interaction.response.embeds[0].data.title, /<:3763verifiedgreen:\d{17,20}>/);
+    assert.match(interaction.response.embeds[0].data.description, /<:3763verifiedgreen:\d{17,20}> \*\*\/verification\*\*/);
+    assert.match(interaction.response.embeds[0].data.description, /<:269160support:\d{17,20}> \*\*\/tickets\*\*/);
+    const categoryOptions = interaction.response.components[0].components[0].toJSON().options;
+    assert.deepEqual(categoryOptions[1].emoji, {
+      id: '100000000000000003',
+      name: '829331discordstaff',
+      animated: false,
+    });
+  });
+
+  it('uses custom moderation, verification, France and bug-hunter logos in settings commands', async () => {
+    const makeInteraction = (commandName) => {
+      const interaction = {
+        commandName,
+        guildId: '123456789012345643',
+        client: clientWithCustomEmojis(),
+        memberPermissions: { has: () => true },
+        options: {
+          getString: () => null,
+          getAttachment: () => null,
+          getBoolean: () => false,
+        },
+        reply: async (response) => { interaction.response = response; },
+      };
+      return interaction;
+    };
+
+    const securitas = makeInteraction('securitas');
+    await handleCommand(securitas);
+    assert.match(securitas.response.embeds[0].data.title, /<:829331discordstaff:\d{17,20}>/);
+
+    const verification = makeInteraction('verification');
+    await handleCommand(verification);
+    assert.match(verification.response.embeds[0].data.title, /<:3763verifiedgreen:\d{17,20}>/);
+
+    const management = makeInteraction('gestion');
+    await handleCommand(management);
+    const fields = management.response.embeds[0].data.fields;
+    assert.match(fields.find((field) => field.name.endsWith('Notifications')).name, /<:4535franceyees:\d{17,20}>/);
+    assert.match(fields.find((field) => field.name.endsWith('Journal')).name, /<:697211bughunter:\d{17,20}>/);
+  });
+
+  it('records every slash command invocation in the configured moderation journal', async () => {
+    const guildId = '123456789012345642';
+    const channelId = '987654321098765642';
+    const settings = await getGuild(guildId);
+    settings.logChannelId = channelId;
+    await save();
+    let report;
+    const logChannel = {
+      id: channelId,
+      isTextBased: () => true,
+      send: async (payload) => { report = payload; },
+    };
+    const interaction = {
+      id: '765432109876543210',
+      guildId,
+      guild: {
+        channels: {
+          cache: new Collection(),
+          fetch: async (id) => id === channelId ? logChannel : null,
+        },
+      },
+      channelId: '987654321098765643',
+      commandName: 'unban',
+      client: clientWithCustomEmojis(),
+      user: { id: '123456789012345641', tag: 'Moderator#0001' },
+      options: {
+        getSubcommandGroup: () => null,
+        getSubcommand: () => 'liste',
+      },
+    };
+
+    assert.equal(await logCommandUsage(interaction), true);
+    assert.equal(report.embeds[0].data.title, '<:829331discordstaff:100000000000000003> Utilisation d’une commande');
+    assert.equal(report.embeds[0].data.fields[0].value, '`/unban liste`');
+    assert.match(report.embeds[0].data.fields[1].value, /<@123456789012345641>/);
+    assert.equal(report.embeds[0].data.fields[2].value, '<#987654321098765643>');
+    assert.deepEqual(report.allowedMentions, { parse: [] });
   });
 
   it('prevents another user from interacting with a private help panel', async () => {

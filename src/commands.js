@@ -102,6 +102,24 @@ const ACTION_ICONS = {
 const successMessage = (message) => `✅ ${message}`;
 const warningMessage = (message) => `⚠️ ${message}`;
 const formatCount = (count, singular, plural = `${singular}s`) => `${count} ${count === 1 ? singular : plural}`;
+const CUSTOM_EMOJI_NAMES = {
+  owner: '479369king',
+  bugHunter: '697211bughunter',
+  france: '4535franceyees',
+  moderation: '829331discordstaff',
+  verified: '3763verifiedgreen',
+  support: '269160support',
+};
+
+function themedEmoji(client, key, fallback) {
+  const customEmoji = findThemedEmoji(client, key);
+  return customEmoji?.toString() ?? fallback;
+}
+
+function findThemedEmoji(client, key) {
+  const name = CUSTOM_EMOJI_NAMES[key];
+  return name && client?.emojis?.cache?.find((emoji) => emoji.name === name);
+}
 const REQUIRED_COMMAND_PERMISSIONS = {
   warn: PermissionFlagsBits.ModerateMembers,
   warnings: PermissionFlagsBits.ModerateMembers,
@@ -128,8 +146,10 @@ const REQUIRED_COMMAND_PERMISSIONS = {
 
 const HELP_GROUPS = [
   {
-    name: '🛡️ Modération des membres',
+    name: 'Modération des membres',
     value: 'members',
+    emoji: 'moderation',
+    fallbackEmoji: '🛡️',
     description: 'Avertissements, suspensions, exclusions et bannissements.',
     permission: 'La permission requise est indiquée par Discord pour chaque commande.',
     commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'nickname'],
@@ -137,20 +157,24 @@ const HELP_GROUPS = [
   {
     name: 'Salons et outils',
     value: 'channels',
+    emoji: 'bugHunter',
+    fallbackEmoji: '🧰',
     description: 'Nettoyage, contrôle des salons, sondages et informations.',
     permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
     commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'support', 'userinfo', 'avatar', 'sondage'],
   },
   {
-    name: '⚙️ Configuration et tickets',
+    name: 'Configuration et tickets',
     value: 'configuration',
+    emoji: 'verified',
+    fallbackEmoji: '⚙️',
     description: 'Panneaux de sécurité et de gestion, CAPTCHA et système de tickets.',
     permission: 'Gérer le serveur pour configurer ; les tickets dépendent de leur configuration.',
     commands: ['securitas', 'gestion', 'verification', 'tickets'],
   },
 ];
 
-function helpPanelEmbed(groupValue = 'home') {
+function helpPanelEmbed(groupValue = 'home', client) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setFooter({ text: 'Commandes slash • Les permissions dépendent de l’action' });
@@ -159,36 +183,66 @@ function helpPanelEmbed(groupValue = 'home') {
       .setTitle('📚 Centre de commandes')
       .setDescription('Choisissez une catégorie pour voir les commandes correspondantes. Les actions habituelles restent accessibles directement avec `/commande`.')
       .addFields(HELP_GROUPS.map((group) => ({
-        name: group.name,
+        name: `${themedEmoji(client, group.emoji, group.fallbackEmoji)} ${group.name}`,
         value: `${group.description}\n${group.commands.map((commandName) => `/${commandName}`).join(' · ')}`,
       })));
   }
   const group = HELP_GROUPS.find((item) => item.value === groupValue);
   if (!group) return null;
   return embed
-    .setTitle(`📚 ${group.name}`)
+    .setTitle(`📚 ${themedEmoji(client, group.emoji, group.fallbackEmoji)} ${group.name}`)
     .setDescription(group.commands.map((commandName) => {
       const command = commands.find((entry) => entry.name === commandName);
       const icon = {
-        logs: '🐛',
-        serverinfo: '👑',
-        support: '🎧',
-        verification: '✅',
-        tickets: '🎧',
+        warn: themedEmoji(client, 'moderation', '⚠️'),
+        warnings: themedEmoji(client, 'moderation', '📋'),
+        unwarn: themedEmoji(client, 'moderation', '↩️'),
+        clearwarnings: themedEmoji(client, 'moderation', '🧹'),
+        timeout: themedEmoji(client, 'moderation', '⏳'),
+        untimeout: themedEmoji(client, 'moderation', '✅'),
+        kick: themedEmoji(client, 'moderation', '👢'),
+        ban: themedEmoji(client, 'moderation', '🔨'),
+        unban: themedEmoji(client, 'moderation', '🔓'),
+        nickname: themedEmoji(client, 'moderation', '✏️'),
+        purge: themedEmoji(client, 'moderation', '🧹'),
+        slowmode: themedEmoji(client, 'moderation', '🐢'),
+        lock: themedEmoji(client, 'moderation', '🔒'),
+        unlock: themedEmoji(client, 'moderation', '🔓'),
+        dire: themedEmoji(client, 'moderation', '📢'),
+        logs: themedEmoji(client, 'bugHunter', '🐛'),
+        vocal: '🔊',
+        serverinfo: themedEmoji(client, 'owner', '🏠'),
+        support: themedEmoji(client, 'support', '🎧'),
+        userinfo: '👤',
+        avatar: '🖼️',
+        sondage: '📊',
+        securitas: themedEmoji(client, 'moderation', '🛡️'),
+        gestion: '⚙️',
+        verification: themedEmoji(client, 'verified', '✅'),
+        tickets: themedEmoji(client, 'support', '🎟️'),
       }[commandName];
       return `${icon ? `${icon} ` : ''}**/${commandName}** — ${command.description}`;
     }).join('\n'))
     .addFields({ name: 'Permissions', value: group.permission });
 }
 
-function helpPanelComponents() {
+function helpPanelComponents(client) {
   return [new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId('help:category')
       .setPlaceholder('Afficher les commandes par catégorie')
       .addOptions(
         { label: 'Toutes les catégories', value: 'home' },
-        ...HELP_GROUPS.map(({ name, value }) => ({ label: name, value })),
+        ...HELP_GROUPS.map(({ name, value, emoji, fallbackEmoji }) => {
+          const customEmoji = findThemedEmoji(client, emoji);
+          return {
+            label: name,
+            value,
+            emoji: customEmoji
+              ? { id: customEmoji.id, name: customEmoji.name, animated: customEmoji.animated }
+              : fallbackEmoji,
+          };
+        }),
       ),
   )];
 }
@@ -198,7 +252,7 @@ async function log(interaction, settings, action, target, details) {
   const channel = interaction.guild.channels.cache.get(settings.logChannelId);
   if (!channel) return;
   const embed = new EmbedBuilder()
-    .setTitle(`${ACTION_ICONS[action] ?? '🛡️'} ${ACTION_LABELS[action] ?? action}`)
+    .setTitle(`${themedEmoji(interaction.client, 'moderation', ACTION_ICONS[action] ?? '🛡️')} ${ACTION_LABELS[action] ?? action}`)
     .setColor(COLORS[action] ?? 0x99aab5)
     .addFields(
       { name: '👤 Membre concerné', value: target ? `<@${target.id}> (${target.tag ?? target.id})` : 'Aucun', inline: true },
@@ -207,6 +261,34 @@ async function log(interaction, settings, action, target, details) {
     )
     .setTimestamp();
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((err) => console.error('[moderation-bot] Échec de publication dans le journal :', err.message));
+}
+
+export async function logCommandUsage(interaction) {
+  const settings = await getGuild(interaction.guildId);
+  if (!settings.logChannelId) return false;
+
+  let channel = interaction.guild.channels.cache.get(settings.logChannelId);
+  if (!channel) channel = await interaction.guild.channels.fetch(settings.logChannelId);
+  if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+    throw new Error(`Le salon de journal configuré (${settings.logChannelId}) est introuvable ou n’accepte pas les messages.`);
+  }
+
+  const subcommandGroup = interaction.options.getSubcommandGroup(false);
+  const subcommand = interaction.options.getSubcommand(false);
+  const commandPath = [interaction.commandName, subcommandGroup, subcommand].filter(Boolean).join(' ');
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`${themedEmoji(interaction.client, 'moderation', '📜')} Utilisation d’une commande`)
+    .addFields(
+      { name: 'Commande', value: `\`/${commandPath}\``, inline: true },
+      { name: 'Membre', value: `<@${interaction.user.id}> (\`${interaction.user.tag ?? interaction.user.username ?? interaction.user.id}\`)`, inline: true },
+      { name: 'Salon', value: `<#${interaction.channelId}>`, inline: true },
+    )
+    .setFooter({ text: `Identifiant de l’interaction : ${interaction.id}` })
+    .setTimestamp();
+
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  return true;
 }
 
 async function tell(target, guild, text) {
@@ -252,12 +334,12 @@ function ticketPanelComponents() {
   )];
 }
 
-function ticketPanelEmbed(settings) {
+function ticketPanelEmbed(settings, client) {
   return new EmbedBuilder()
     .setTitle(settings.ticketPanelTitle)
     .setDescription(settings.ticketPanelDescription)
     .setColor(0x5865f2)
-    .setFooter({ text: 'Assistance privée • Votre demande sera visible par vous et l’équipe de support' });
+    .setFooter({ text: `${themedEmoji(client, 'support', '🎧')} Assistance privée • Votre demande sera visible par vous et l’équipe de support` });
 }
 
 function announcementPreview(settings, guild, event) {
@@ -296,11 +378,11 @@ const configStatus = (enabled) => enabled ? '🟢 Activé' : '⚫ Désactivé';
 const configuredChannel = (id) => id ? `<#${id}>` : '*Non configuré*';
 const configuredRole = (id) => id ? `<@&${id}>` : '*Aucun rôle*';
 
-function warBoubouEmbed(settings) {
+function warBoubouEmbed(settings, client) {
   const { antiRaid, antiSpam, antiLink } = settings.security;
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('🛡️ Securitas')
+    .setTitle(`${themedEmoji(client, 'moderation', '🛡️')} Securitas`)
     .setDescription('Tableau unique des protections automatiques du serveur. Les changements sont enregistrés immédiatement.')
     .addFields(
       {
@@ -353,15 +435,15 @@ const MANAGEMENT_PANEL_OPTIONS = [
   { label: '🇫🇷 Langue', value: 'language' },
 ];
 
-function managementDashboardEmbed() {
+function managementDashboardEmbed(client) {
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('⚙️ Gestion du serveur')
     .setDescription('Choisissez le réglage à modifier. Les changements sont enregistrés immédiatement.')
     .addFields(
       { name: '👋 Annonces', value: 'Bienvenue et départ', inline: true },
-      { name: '🇫🇷 Notifications', value: 'Langue des notifications automatiques', inline: true },
-      { name: '🐛 Journal', value: 'Salon des journaux et alertes de modération', inline: true },
+      { name: `${themedEmoji(client, 'france', '🇫🇷')} Notifications`, value: 'Langue des notifications automatiques', inline: true },
+      { name: `${themedEmoji(client, 'bugHunter', '🐛')} Journal`, value: 'Salon des journaux et alertes de modération', inline: true },
     )
     .setFooter({ text: 'Panneau privé • Réservé aux membres ayant Gérer le serveur' });
 }
@@ -379,7 +461,7 @@ function isManagementPanel(key) {
   return MANAGEMENT_PANEL_OPTIONS.some((option) => option.value === key);
 }
 
-function configEmbed(settings, key) {
+function configEmbed(settings, key, client) {
   const { security } = settings;
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
@@ -387,7 +469,7 @@ function configEmbed(settings, key) {
     .setTimestamp();
 
   if (key === 'language') {
-    embed.setTitle('🌐 Langue des notifications')
+    embed.setTitle(`${themedEmoji(client, 'france', '🌐')} Langue des notifications`)
       .setDescription('Choisissez la langue utilisée par les notifications automatiques du bot.')
       .addFields({ name: 'Langue actuelle', value: security.language === 'en' ? '**🇬🇧 English**' : '**🇫🇷 Français**' });
   } else if (key === 'antiLink') {
@@ -415,7 +497,7 @@ function configEmbed(settings, key) {
         { name: 'Durée', value: `**${security.antiRaid.protectionMinutes} min**`, inline: true },
       );
   } else if (key === 'verification') {
-    embed.setTitle('✅ Vérification des nouveaux membres')
+    embed.setTitle(`${themedEmoji(client, 'verified', '✅')} Vérification des nouveaux membres`)
       .setDescription('Un membre doit réussir un CAPTCHA visuel privé pour recevoir le rôle vérifié. Configurez ce rôle et publiez le panneau dans un salon accessible aux nouveaux membres.')
       .addFields(
         { name: 'Protection', value: configStatus(security.verification.enabled), inline: true },
@@ -423,7 +505,7 @@ function configEmbed(settings, key) {
         { name: 'Étape requise sur le serveur', value: 'Limitez l’accès aux salons aux membres portant le rôle vérifié. Laissez le salon du panneau visible pour @everyone.' },
       );
   } else if (key === 'logs') {
-    embed.setTitle('🐛 Journal de modération')
+    embed.setTitle(`${themedEmoji(client, 'bugHunter', '🐛')} Journal de modération`)
       .setDescription('Les sanctions et les actions de modération seront publiées dans le salon choisi.')
       .addFields({ name: 'Salon actuel', value: configuredChannel(settings.logChannelId) });
   } else if (key === 'welcome' || key === 'leave') {
@@ -689,8 +771,8 @@ export async function handleCommand(interaction) {
   }
   if (name === 'aide') {
     await interaction.reply({
-      embeds: [helpPanelEmbed()],
-      components: helpPanelComponents(),
+      embeds: [helpPanelEmbed('home', interaction.client)],
+      components: helpPanelComponents(interaction.client),
       ephemeral: true,
     });
     return;
@@ -698,21 +780,35 @@ export async function handleCommand(interaction) {
 
   if (name === 'support') {
     const supportUrl = 'https://discord.gg/FXbeGGyVn';
+    const supportEmoji = themedEmoji(interaction.client, 'support', '🎧');
+    const moderationEmoji = themedEmoji(interaction.client, 'moderation', '🛡️');
+    const verifiedEmoji = themedEmoji(interaction.client, 'verified', '✅');
+    const ownerEmoji = themedEmoji(interaction.client, 'owner', '👑');
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle('🛡️ Bot anti-raid, anti-spam et anti-liens')
-      .setDescription('✅ Modération et gestion de serveur')
-      .addFields({
-        name: '🎧 Besoin d’aide ?',
-        value: 'En cas de bogue ou de dysfonctionnement, rejoignez le serveur de support pour prévenir les développeurs.',
-      })
+      .setTitle(`${moderationEmoji} FadeHost | Modération et protection`)
+      .setDescription(`${verifiedEmoji} Un bot conçu pour protéger et simplifier la gestion de votre serveur Discord.`)
+      .addFields(
+        {
+          name: `${moderationEmoji} Fonctionnalités`,
+          value: '• Protection contre les raids, le spam et les liens indésirables\n• Outils de modération et journal des actions\n• Vérification des nouveaux membres et gestion des tickets',
+        },
+        {
+          name: `${supportEmoji} Assistance`,
+          value: 'Vous rencontrez un bogue ou avez besoin d’aide ? Rejoignez notre serveur officiel et décrivez le problème rencontré. Pensez à préciser la commande utilisée et le message d’erreur affiché.',
+        },
+        {
+          name: `${ownerEmoji} Créateurs`,
+          value: 'hi_o0fh et tixeemtv',
+        },
+      )
       .setURL(supportUrl)
-      .setFooter({ text: 'FadeHost • Serveur officiel de support' });
+      .setFooter({ text: 'FadeHost • Support officiel • Merci de ne jamais partager votre jeton de bot' });
     await interaction.reply({
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setLabel('Rejoindre le serveur de support')
+          .setLabel('Ouvrir le serveur officiel de support')
           .setStyle(ButtonStyle.Link)
           .setURL(supportUrl),
       )],
@@ -727,7 +823,7 @@ export async function handleCommand(interaction) {
 
   if (name === 'securitas') {
     await interaction.reply({
-      embeds: [warBoubouEmbed(settings)],
+      embeds: [warBoubouEmbed(settings, interaction.client)],
       components: warBoubouComponents(settings),
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -736,7 +832,7 @@ export async function handleCommand(interaction) {
   }
   if (name === 'verification') {
     await interaction.reply({
-      embeds: [configEmbed(settings, 'verification')],
+      embeds: [configEmbed(settings, 'verification', interaction.client)],
       components: configComponents(settings, 'verification'),
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -757,7 +853,13 @@ export async function handleCommand(interaction) {
         { name: '📅 Créé le', value: guild.createdAt ? `<t:${Math.floor(guild.createdAt.getTime() / 1000)}:D>` : 'Inconnu', inline: true },
         { name: '🆔 Identifiant', value: guild.id, inline: true },
       );
-    if (guild.ownerId) embed.addFields({ name: '👑 Propriétaire', value: `<@${guild.ownerId}>`, inline: true });
+    if (guild.ownerId) {
+      embed.addFields({
+        name: `${themedEmoji(interaction.client, 'owner', '👑')} Propriétaire`,
+        value: `<@${guild.ownerId}>`,
+        inline: true,
+      });
+    }
     const iconUrl = guild.iconURL?.();
     if (iconUrl) embed.setThumbnail(iconUrl);
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
@@ -847,14 +949,14 @@ export async function handleCommand(interaction) {
       await save();
       if (previousImage && previousImage !== imagePath) await removeMemberEventImage(previousImage);
       await interaction.editReply({
-        embeds: [configEmbed(settings, key)],
+        embeds: [configEmbed(settings, key, interaction.client)],
         components: configPanelComponents(settings, key),
         allowedMentions: { parse: [] },
       });
       return;
     }
     await interaction.reply({
-      embeds: [key ? configEmbed(settings, key) : managementDashboardEmbed()],
+      embeds: [key ? configEmbed(settings, key, interaction.client) : managementDashboardEmbed(interaction.client)],
       components: key ? configPanelComponents(settings, key) : [managementDashboardSelect()],
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -863,7 +965,7 @@ export async function handleCommand(interaction) {
   }
   if (name === 'tickets') {
     await interaction.reply({
-      embeds: [configEmbed(settings, 'tickets')],
+      embeds: [configEmbed(settings, 'tickets', interaction.client)],
       components: configPanelComponents(settings, 'tickets'),
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -925,7 +1027,7 @@ export async function handleCommand(interaction) {
       return;
     }
     const embed = new EmbedBuilder()
-      .setTitle('📋 Dernières entrées du journal')
+      .setTitle(`${themedEmoji(interaction.client, 'bugHunter', '📋')} Dernières entrées du journal`)
       .setColor(0x5865f2)
       .setDescription(entries.map((message) => {
         const detail = message.embeds[0]
@@ -1023,7 +1125,7 @@ export async function handleCommand(interaction) {
       const page = Math.min(interaction.options.getInteger('page') ?? 1, pageCount);
       const entries = [...bans.values()].slice((page - 1) * pageSize, page * pageSize);
       const embed = new EmbedBuilder()
-        .setTitle('🔨 Comptes bannis')
+        .setTitle(`${themedEmoji(interaction.client, 'moderation', '🔨')} Comptes bannis`)
         .setColor(0xed4245)
         .setDescription(entries.map((ban) => `• **${ban.user.username}** — \`${ban.user.id}\`${ban.reason ? ` — ${ban.reason.slice(0, 180)}` : ''}`).join('\n').slice(0, 4000))
         .setFooter({ text: `Page ${page}/${pageCount} · ${formatCount(bans.size, 'compte', 'comptes')}` });
@@ -1086,7 +1188,7 @@ export async function handleCommand(interaction) {
     const startIndex = (page - 1) * pageSize;
     const embed = new EmbedBuilder()
       .setColor(0xfee75c)
-      .setTitle(`⚠️ Avertissements de ${target.tag}`)
+      .setTitle(`${themedEmoji(interaction.client, 'moderation', '⚠️')} Avertissements de ${target.tag}`)
       .setDescription(`Page ${page}/${pageCount} • ${formatCount(list.length, 'avertissement', 'avertissements')} au total`)
       .addFields(list.slice(startIndex, startIndex + pageSize).map((warning, index) => ({
         name: `N° ${startIndex + index + 1}`,
@@ -1220,14 +1322,14 @@ export async function handleHelpInteraction(interaction) {
     return true;
   }
   const [groupValue] = interaction.values;
-  const embed = helpPanelEmbed(groupValue);
+  const embed = helpPanelEmbed(groupValue, interaction.client);
   if (!embed) {
     await interaction.reply({ content: 'Cette catégorie de commandes n’existe pas.', ephemeral: true });
     return true;
   }
   await interaction.update({
     embeds: [embed],
-    components: helpPanelComponents(),
+    components: helpPanelComponents(interaction.client),
     allowedMentions: { parse: [] },
   });
   return true;
@@ -1353,7 +1455,7 @@ export async function handleConfigInteraction(interaction) {
   const settings = await getGuild(interaction.guildId);
   const isWarBoubou = interaction.customId.startsWith('warboubou:');
   const updateConfig = (key) => interaction.update({
-    embeds: [isWarBoubou ? warBoubouEmbed(settings) : configEmbed(settings, key)],
+    embeds: [isWarBoubou ? warBoubouEmbed(settings, interaction.client) : configEmbed(settings, key, interaction.client)],
     components: configPanelComponents(settings, isWarBoubou ? 'security' : key),
     allowedMentions: { parse: [] },
   });
@@ -1386,7 +1488,7 @@ export async function handleConfigInteraction(interaction) {
         return true;
       }
       await interaction.update({
-        embeds: [configEmbed(settings, key)],
+        embeds: [configEmbed(settings, key, interaction.client)],
         components: configPanelComponents(settings, key),
         allowedMentions: { parse: [] },
       });
@@ -1541,7 +1643,7 @@ export async function handleConfigInteraction(interaction) {
         return true;
       }
       await channel.send({
-        embeds: [ticketPanelEmbed(settings)],
+        embeds: [ticketPanelEmbed(settings, interaction.client)],
         components: interaction.customId === 'config:publish:tickets' ? ticketPanelComponents() : [],
         allowedMentions: { parse: [] },
       });

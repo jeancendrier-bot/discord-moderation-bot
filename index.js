@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
-import { commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction } from './src/commands.js';
+import { commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction, logCommandUsage } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
 import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
 import { restoreConfiguredVoice } from './src/voice.js';
@@ -101,7 +101,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.reply({ content: 'Ces commandes sont disponibles uniquement sur un serveur Discord.', ephemeral: true });
       return;
     }
-    await handleCommand(interaction);
+    try {
+      await handleCommand(interaction);
+    } finally {
+      logCommandUsage(interaction).catch((error) => {
+        console.error(`[moderation-bot] Rapport d’utilisation de /${interaction.commandName} impossible :`, error.message);
+      });
+    }
   } catch (err) {
     console.error('[moderation-bot] Échec de l’interaction :', err);
     const messages = {
