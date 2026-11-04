@@ -51,7 +51,7 @@ after(async () => {
 describe('slash command definitions', () => {
   it('serialize unique commands with valid Discord descriptions', async () => {
     const names = commands.map((command) => command.name);
-    assert.equal(names.length, 36);
+    assert.equal(names.length, 25);
     assert.equal(new Set(names).size, names.length);
     for (const commandName of [
       'warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout',
@@ -73,25 +73,17 @@ describe('slash command definitions', () => {
     const protocol = commands.find((command) => command.name === 'protocol');
     assert.deepEqual(protocol.options, []);
     assert.equal(protocol.default_member_permissions, '32');
-    assert.deepEqual(commands.find((command) => command.name === 'filter').options.map((option) => option.name), ['ajouter', 'retirer', 'liste']);
-    assert.equal(commands.find((command) => command.name === 'filter').default_member_permissions, '8192');
-    assert.deepEqual(commands.find((command) => command.name === 'gestion').options, []);
-    for (const commandName of ['antiraid', 'antispam', 'antilien', 'langue', 'journal']) {
-      assert.deepEqual(commands.find((command) => command.name === commandName).options, []);
+    assert.deepEqual(commands.find((command) => command.name === 'config').options.map((option) => option.name), ['annonce', 'image', 'effacer_image']);
+    assert.equal(commands.find((command) => command.name === 'config').default_member_permissions, '32');
+    for (const removedCommand of ['filter', 'gestion', 'antiraid', 'antispam', 'antilien', 'bienvenue', 'depart', 'langue', 'journal', 'verification', 'tickets', 'logs']) {
+      assert.equal(commands.some((command) => command.name === removedCommand), false, `/${removedCommand} is available through /config`);
     }
-    assert.deepEqual(commands.find((command) => command.name === 'bienvenue').options.map((option) => option.name), ['image', 'effacer_image']);
-    assert.deepEqual(commands.find((command) => command.name === 'depart').options.map((option) => option.name), ['image', 'effacer_image']);
-    assert.ok(commands.some((command) => command.name === 'verification'));
     assert.ok(commands.some((command) => command.name === 'serverinfo'));
     assert.ok(commands.some((command) => command.name === 'support'));
     assert.deepEqual(commands.find((command) => command.name === 'userinfo').options.map((option) => option.name), ['user']);
-    assert.equal(commands.some((command) => command.name === 'config'), false);
+    assert.ok(commands.some((command) => command.name === 'config'));
     assert.deepEqual(commands.find((command) => command.name === 'unban').options.map((option) => option.name), ['retirer', 'liste']);
-    assert.ok(commands.some((command) => command.name === 'logs'));
-    assert.deepEqual(commands.find((command) => command.name === 'logs').options.map((option) => option.name), ['afficher']);
     assert.ok(commands.some((command) => command.name === 'dire'));
-    assert.deepEqual(commands.find((command) => command.name === 'tickets').options, []);
-    assert.equal(commands.find((command) => command.name === 'tickets').default_member_permissions, '32');
     const roles = commands.find((command) => command.name === 'roles');
     assert.deepEqual(roles.options.map((option) => option.name), ['ajouter', 'retirer', 'publier']);
     assert.deepEqual(roles.options[0].options.map((option) => option.name), ['role', 'nom']);
@@ -218,28 +210,51 @@ describe('slash command definitions', () => {
     assert.ok(protocol.response.embeds[0].data.fields.some((field) => field.name === 'Incidents des dernières 24 heures'));
     assert.equal(protocol.response.components, undefined);
 
-    for (const [commandName, title] of [
-      ['antiraid', 'Protection anti-raid'],
-      ['antispam', 'Protection anti-spam'],
-      ['antilien', 'Filtre anti-liens'],
-    ]) {
-      const panel = makeInteraction(commandName);
-      await handleCommand(panel);
-      assert.equal(panel.response.embeds[0].data.title, title);
-      assert.ok(panel.response.components.length > 0);
-    }
+    const config = makeInteraction('config');
+    await handleCommand(config);
+    assert.equal(config.response.embeds[0].data.title, 'Configuration du serveur');
+    const buttons = config.response.components.flatMap((row) => row.components);
+    assert.equal(buttons.length, 11);
+    assert.ok(buttons.every((button) => !button.data.emoji));
+    assert.deepEqual(buttons.map((button) => button.data.custom_id), [
+      'config:open:protocol',
+      'config:open:antiRaid',
+      'config:open:antiSpam',
+      'config:open:antiLink',
+      'config:open:wordFilter',
+      'config:open:welcome',
+      'config:open:leave',
+      'config:open:language',
+      'config:open:logs',
+      'config:open:verification',
+      'config:open:tickets',
+    ]);
 
-    const verification = makeInteraction('verification');
-    await handleCommand(verification);
-    assert.equal(verification.response.embeds[0].data.title, 'Vérification des nouveaux membres');
-
-    const management = makeInteraction('gestion');
-    await handleCommand(management);
-    const fields = management.response.embeds[0].data.fields;
-    assert.ok(fields.some((field) => field.name === 'Bienvenue'));
-    assert.ok(fields.some((field) => field.name === 'Départ'));
-    assert.equal(fields.find((field) => field.name === 'Langue').value, 'Français');
-    assert.ok(fields.some((field) => field.name === 'Journal'));
+    const ownerId = '123456789012345643';
+    const panel = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:open:antiRaid',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId: config.guildId,
+      user: { id: ownerId },
+      message: { interactionMetadata: { user: { id: ownerId } } },
+      update: async (response) => { panel.response = response; },
+      reply: async (response) => { panel.response = response; },
+    };
+    await handleConfigInteraction(panel);
+    assert.equal(panel.response.embeds[0].data.title, 'Protection anti-raid');
+    assert.ok(panel.response.components.flatMap((row) => row.components).some((button) => button.data.custom_id === 'config:home'));
+    panel.customId = 'config:open:protocol';
+    await handleConfigInteraction(panel);
+    assert.equal(panel.response.embeds[0].data.title, 'Sécurité Protocol');
+    panel.customId = 'config:home';
+    await handleConfigInteraction(panel);
+    assert.equal(panel.response.embeds[0].data.title, 'Configuration du serveur');
   });
 
   it('records every slash command invocation in the configured moderation journal', async () => {
@@ -498,7 +513,7 @@ describe('slash command definitions', () => {
     }
   });
 
-  it('opens independent security and management panels', async () => {
+  it('opens each settings panel from the config button menu', async () => {
     const interaction = {
       commandName: 'protocol',
       guildId: '123456789012345650',
@@ -511,36 +526,35 @@ describe('slash command definitions', () => {
     assert.equal(interaction.response.embeds[0].data.title, 'Sécurité Protocol');
     assert.equal(interaction.response.components, undefined);
 
-    const gestion = {
-      commandName: 'gestion',
+    const config = {
+      commandName: 'config',
       guildId: interaction.guildId,
       memberPermissions: { has: () => true },
       options: { getString: () => null, getAttachment: () => null, getBoolean: () => false },
-      reply: async (response) => { gestion.response = response; },
+      reply: async (response) => { config.response = response; },
     };
-    await handleCommand(gestion);
-    assert.equal(gestion.response.embeds[0].data.title, 'Gestion du serveur');
-    assert.equal(gestion.response.components, undefined);
-    for (const [commandName, title] of [
-      ['bienvenue', 'Annonce de bienvenue'],
-      ['depart', 'Annonce de départ'],
-      ['langue', 'Langue des notifications'],
-      ['journal', 'Journal de modération'],
-    ]) {
-      const panel = {
-        commandName,
-        guildId: interaction.guildId,
-        memberPermissions: { has: () => true },
-        options: {
-          getAttachment: () => null,
-          getBoolean: () => false,
-        },
-        reply: async (response) => { panel.response = response; },
-      };
-      await handleCommand(panel);
-      assert.equal(panel.response.embeds[0].data.title, title);
-      assert.ok(panel.response.components.length > 0);
-    }
+    await handleCommand(config);
+    assert.equal(config.response.embeds[0].data.title, 'Configuration du serveur');
+    assert.equal(config.response.components.flatMap((row) => row.components).length, 11);
+    const ownerId = '123456789012345650';
+    const welcomeButton = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:open:welcome',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId: interaction.guildId,
+      user: { id: ownerId },
+      message: { interactionMetadata: { user: { id: ownerId } } },
+      update: async (response) => { welcomeButton.response = response; },
+      reply: async (response) => { welcomeButton.response = response; },
+    };
+    assert.equal(await handleConfigInteraction(welcomeButton), true);
+    assert.equal(welcomeButton.response.embeds[0].data.title, 'Annonce de bienvenue');
+    assert.ok(welcomeButton.response.components.flatMap((row) => row.components).some((button) => button.data.custom_id === 'config:home'));
 
     const oldPanel = {
       isButton: () => false,
@@ -560,28 +574,75 @@ describe('slash command definitions', () => {
     assert.match(oldPanel.response.content, /a été remplacé/);
   });
 
-  it('manages the persistent word filter with moderator-only subcommands', async () => {
+  it('manages the persistent word filter from its config panel', async () => {
     const guildId = '123456789012345649';
-    const makeInteraction = (subcommand, word = null) => {
-      const interaction = {
-        commandName: 'filter',
-        guildId,
-        memberPermissions: { has: () => true },
-        options: {
-          getSubcommand: () => subcommand,
-          getString: () => word,
-        },
-        reply: async (response) => { interaction.response = response; },
-      };
-      return interaction;
+    const ownerId = '123456789012345649';
+    const wordPanel = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:open:wordFilter',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId,
+      user: { id: ownerId },
+      message: { interactionMetadata: { user: { id: ownerId } } },
+      update: async (response) => { wordPanel.response = response; },
+      reply: async (response) => { wordPanel.response = response; },
     };
+    await handleConfigInteraction(wordPanel);
+    assert.equal(wordPanel.response.embeds[0].data.title, 'Filtre de mots');
 
-    await handleCommand(makeInteraction('ajouter', '  Insulte  '));
+    let modal;
+    const addButton = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:edit:wordFilterAdd',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId,
+      user: { id: ownerId },
+      message: { interactionMetadata: { user: { id: ownerId } } },
+      showModal: async (value) => { modal = value; },
+      reply: async (response) => { addButton.response = response; },
+    };
+    await handleConfigInteraction(addButton);
+    assert.equal(modal.data.custom_id, `config:save:wordFilterAdd:${ownerId}`);
+
+    const submit = {
+      isButton: () => false,
+      isModalSubmit: () => true,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: `config:save:wordFilterAdd:${ownerId}`,
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId,
+      user: { id: ownerId },
+      fields: { getTextInputValue: () => '  Insulte  ' },
+      update: async (response) => { submit.response = response; },
+      reply: async (response) => { submit.response = response; },
+    };
+    await handleConfigInteraction(submit);
     assert.deepEqual((await getGuild(guildId)).security.wordFilter, ['insulte']);
-    const list = makeInteraction('liste');
-    await handleCommand(list);
-    assert.match(list.response.embeds[0].data.description, /insulte/);
-    await handleCommand(makeInteraction('retirer', 'INSULTE'));
+    assert.match(submit.response.embeds[0].data.fields[0].value, /insulte/);
+
+    const removeButton = { ...addButton, customId: 'config:edit:wordFilterRemove' };
+    await handleConfigInteraction(removeButton);
+    const remove = {
+      ...submit,
+      customId: `config:save:wordFilterRemove:${ownerId}`,
+      fields: { getTextInputValue: () => 'INSULTE' },
+      update: async (response) => { remove.response = response; },
+      reply: async (response) => { remove.response = response; },
+    };
+    await handleConfigInteraction(remove);
     assert.deepEqual((await getGuild(guildId)).security.wordFilter, []);
   });
 
@@ -1152,7 +1213,7 @@ describe('moderation commands', () => {
     it('opens the CAPTCHA settings and requires a role before enabling', async () => {
       const guildId = '123456789012345695';
       const open = {
-        commandName: 'verification',
+        commandName: 'config',
         guildId,
         memberPermissions: { has: () => true },
         options: {
@@ -1163,7 +1224,23 @@ describe('moderation commands', () => {
         reply: async (response) => { open.response = response; },
       };
       await handleCommand(open);
-      const verificationPanel = open;
+      const ownerId = '123456789012345000';
+      const verificationPanel = {
+        isButton: () => true,
+        isModalSubmit: () => false,
+        isStringSelectMenu: () => false,
+        isChannelSelectMenu: () => false,
+        isRoleSelectMenu: () => false,
+        customId: 'config:open:verification',
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        user: { id: ownerId },
+        message: { interactionMetadata: { user: { id: ownerId } } },
+        update: async (response) => { verificationPanel.response = response; },
+        reply: async (response) => { verificationPanel.response = response; },
+      };
+      await handleConfigInteraction(verificationPanel);
       assert.equal(verificationPanel.response.embeds[0].data.title, 'Vérification des nouveaux membres');
       assert.ok(verificationPanel.response.components.flatMap((row) => row.components).some((component) => component.data.custom_id === 'config:publish:verification'));
 
@@ -1408,7 +1485,7 @@ describe('moderation commands', () => {
     }
   });
 
-  it('configures the moderation log channel from its own command and displays entries', async () => {
+  it('configures the moderation log channel and displays entries in its config panel', async () => {
     const guildId = '123456789012345680';
     const settings = await getGuild(guildId);
     const channel = { id: '987654321098765434', name: 'mod-logs', type: 0 };
@@ -1443,16 +1520,23 @@ describe('moderation commands', () => {
       messages: { fetch: async () => new Collection([['log-message', logMessage]]) },
     };
     const displayInteraction = {
-      commandName: 'logs',
-      guildId,
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:show:logs',
+      inGuild: () => true,
       memberPermissions: { has: () => true },
+      guildId,
+      user: { id: '123456789012345680' },
+      message: { interactionMetadata: { user: { id: '123456789012345680' } } },
       client: { user: { id: 'bot-user' } },
       guild: { channels: { fetch: async () => logChannel } },
-      options: { getString: () => null, getSubcommand: () => 'afficher' },
-      deferReply: async () => {},
-      editReply: async (message) => { displayInteraction.response = message; },
+      update: async (message) => { displayInteraction.response = message; },
+      reply: async (message) => { displayInteraction.response = message; },
     };
-    await handleCommand(displayInteraction);
+    await handleConfigInteraction(displayInteraction);
     assert.match(displayInteraction.response.embeds[0].data.description, /Action de modération/);
   });
 
@@ -1473,13 +1557,14 @@ describe('moderation commands', () => {
     assert.match(interaction.response.embeds[0].data.description, /Test/);
   });
 
-  it('opens the welcome panel from its own command and lets administrators toggle the arrival ping', async () => {
+  it('opens the welcome panel from config and lets administrators toggle the arrival ping', async () => {
     const guildId = '123456789012345684';
     const interaction = {
-      commandName: 'bienvenue',
+      commandName: 'config',
       guildId,
       memberPermissions: { has: () => true },
       options: {
+        getString: () => null,
         getAttachment: () => null,
         getBoolean: () => false,
       },
@@ -1487,8 +1572,24 @@ describe('moderation commands', () => {
     };
 
     await handleCommand(interaction);
-    assert.equal(interaction.response.embeds[0].data.title, 'Annonce de bienvenue');
-    assert.ok(interaction.response.components.flatMap((row) => row.components).some((component) => component.data.custom_id === 'config:set:welcomePing:toggle'));
+    const welcomePanel = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:open:welcome',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId,
+      user: { id: '123456789012345000' },
+      message: { interactionMetadata: { user: { id: '123456789012345000' } } },
+      update: async (message) => { welcomePanel.response = message; },
+      reply: async (message) => { welcomePanel.response = message; },
+    };
+    await handleConfigInteraction(welcomePanel);
+    assert.equal(welcomePanel.response.embeds[0].data.title, 'Annonce de bienvenue');
+    assert.ok(welcomePanel.response.components.flatMap((row) => row.components).some((component) => component.data.custom_id === 'config:set:welcomePing:toggle'));
 
     const pingButton = {
       isButton: () => true,
@@ -1560,16 +1661,34 @@ describe('moderation commands', () => {
   it('opens the interactive tickets dashboard with configuration and publishing controls', async () => {
     const guildId = '123456789012345687';
     const interaction = {
-      commandName: 'tickets',
+      commandName: 'config',
       guildId,
       memberPermissions: { has: () => true },
+      options: { getString: () => null, getAttachment: () => null, getBoolean: () => false },
       reply: async (message) => { interaction.response = message; },
     };
 
     await handleCommand(interaction);
     assert.equal(interaction.response.ephemeral, true);
-    assert.equal(interaction.response.embeds[0].data.title, 'Support • Configuration des tickets');
-    const componentIds = interaction.response.components.flatMap((row) =>
+    const ownerId = '123456789012345687';
+    const openTickets = {
+      isButton: () => true,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isChannelSelectMenu: () => false,
+      isRoleSelectMenu: () => false,
+      customId: 'config:open:tickets',
+      inGuild: () => true,
+      memberPermissions: { has: () => true },
+      guildId,
+      user: { id: ownerId },
+      message: { interactionMetadata: { user: { id: ownerId } } },
+      update: async (message) => { openTickets.response = message; },
+      reply: async (message) => { openTickets.response = message; },
+    };
+    await handleConfigInteraction(openTickets);
+    assert.equal(openTickets.response.embeds[0].data.title, 'Support • Configuration des tickets');
+    const componentIds = openTickets.response.components.flatMap((row) =>
       row.components.map((component) => component.data.custom_id),
     );
     assert.deepEqual(componentIds, [
@@ -1580,6 +1699,7 @@ describe('moderation commands', () => {
       'config:edit:tickets',
       'config:preview:tickets',
       'config:publish:tickets',
+      'config:home',
     ]);
   });
 
@@ -1841,7 +1961,7 @@ describe('member arrival and departure announcements', () => {
     assert.equal(await handleGuildJoined(guild), systemChannel.id);
     assert.match(sent.embeds[0].data.description, /<@111111111111111111> d’avoir ajouté \*\*Moderation Bot\*\*/);
     const commandFields = sent.embeds[0].data.fields;
-    assert.ok(commandFields.some((field) => field.value.includes('**/tickets**')));
+    assert.ok(commandFields.some((field) => field.value.includes('**/config**')));
     assert.ok(commandFields.some((field) => field.value.includes('**/warnings**')));
     assert.equal(commandFields.some((field) => field.value.includes('**/quiz**')), false);
     assert.deepEqual(sent.allowedMentions, { users: [inviter.id] });

@@ -9,12 +9,12 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 2. Dans **Bot > Privileged Gateway Intents**, activez **Server Members Intent** et **Message Content Intent**.
 3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Send Polls**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Roles**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
-5. Lancez `/protocol` pour consulter le niveau d’alerte et configurer les protections anti-raid, anti-spam et anti-liens, puis `/gestion` pour les réglages de bienvenue, départ, langue et journaux.
-6. Configurez et publiez le panneau de tickets depuis le tableau interactif `/tickets`.
+5. Lancez `/protocol` pour consulter le niveau d’alerte, puis `/config` pour ouvrir les tableaux de réglage.
+6. Dans `/config`, choisissez **Tickets** pour configurer et publier le panneau interactif.
 7. Configurez les rôles à choix libre avec `/roles ajouter`, puis publiez le panneau avec `/roles publier`.
 
 Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (si elle peut être identifiée dans les journaux d’audit), puis affiche toutes ses commandes slash dans le salon système ou, si celui-ci n’est pas accessible, dans le premier salon textuel où il peut écrire. La permission **View Audit Log** permet d’identifier l’invitant ; sans elle, le bot remercie toute l’équipe sans mentionner quelqu’un par erreur.
-À son démarrage, lors d’un arrêt propre et après une perte ou une reconnexion à Discord, le bot annonce son état uniquement sur le serveur support [discord.gg/FXbeGGyVn](https://discord.gg/FXbeGGyVn), dans le salon défini depuis le panneau **Journal de modération** de `/gestion` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Les alertes de nouvelle version et les alertes anti-raid graves sont également relayées sur ce serveur support uniquement. Les détections anti-spam et anti-liens restent dans le journal du serveur concerné pour éviter de transmettre des données de modération d’un serveur à un autre. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
+À son démarrage, lors d’un arrêt propre et après une perte ou une reconnexion à Discord, le bot annonce son état uniquement sur le serveur support [discord.gg/FXbeGGyVn](https://discord.gg/FXbeGGyVn), dans le salon défini depuis le tableau **Journal** de `/config` (ou dans le salon système/un salon accessible si aucun journal n’est défini). Les alertes de nouvelle version et les alertes anti-raid graves sont également relayées sur ce serveur support uniquement. Les détections anti-spam et anti-liens restent dans le journal du serveur concerné pour éviter de transmettre des données de modération d’un serveur à un autre. Un arrêt brutal du processus ou de la machine ne permet pas au bot d’envoyer un dernier message.
 
 ## Modération
 | Commande | Fonction |
@@ -42,46 +42,32 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 | `/avatar [user]` | Affiche l’avatar d’un membre en grand et fournit son lien. |
 | `/support` | Présente les principales protections et outils du bot, crédite ses créateurs et fournit un bouton vers le support officiel. Pour faciliter le diagnostic, indiquez la commande concernée et le message d’erreur ; ne partagez jamais votre jeton. |
 | `/sondage question choix1 choix2 duree [choix3] [choix4] [choix5]` | Publie un sondage natif Discord dans le salon actuel ; durée de 1 à 768 heures. Le bot doit avoir **Send Polls**. |
-| `/logs afficher` | Consulte les dix dernières entrées publiées par le bot dans ce salon. |
-
 Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon** et **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son. Il reste dans le salon tant que `/vocal quitter` n’a pas été utilisée. Le salon choisi est conservé dans la configuration persistante : le bot tente de le rejoindre à son démarrage et de rétablir la connexion après une interruption. Utilisez `/vocal quitter` pour désactiver cette reconnexion. Si le bot ou l’hébergeur est arrêté, il ne peut pas rester connecté pendant l’arrêt ; il reviendra au prochain démarrage.
 
-Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Utilisez `/bienvenue` ou `/depart` pour ouvrir le tableau correspondant et configurer le salon, le texte, l’activation et l’aperçu. Le ping du nouvel arrivant se règle dans `/bienvenue`. Pour joindre ou retirer une image, lancez la commande correspondante avec l’option `image` ou `effacer_image`.
+Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Ouvrez `/config`, puis choisissez **Bienvenue** ou **Départ** pour régler le salon, le texte, l’activation, le ping et l’aperçu. Pour joindre ou retirer une image, lancez `/config` avec l’option `annonce` correspondante, puis `image` ou `effacer_image`.
 
 ## Protection automatique
-Les commandes de configuration sont réservées aux membres disposant des permissions nécessaires. Les panneaux privés de `/aide`, `/protocol`, `/gestion`, `/antiraid`, `/antispam`, `/antilien`, `/bienvenue`, `/depart`, `/langue`, `/journal`, `/verification` et `/tickets` ne peuvent être utilisés que par la personne qui les a ouverts. Si un panneau ne reconnaît pas son propriétaire, relancez la commande. Les panneaux publics de tickets, rôles et CAPTCHA restent utilisables par les membres concernés. `/protocol` est un tableau de suivi uniquement : il affiche les incidents des dernières 24 heures, le nombre de protections actives et le niveau d’alerte. 🔴 indique qu’une protection anti-raid est active, 🟠 au moins cinq incidents, 🟡 une protection désactivée ou un incident récent, et 🟢 aucun problème détecté. Chaque protection se règle dans son propre tableau avec `/antiraid`, `/antispam` ou `/antilien`. `/filter ajouter`, `/filter retirer` et `/filter liste` gèrent les mots interdits ; les messages correspondants sont supprimés automatiquement. `/gestion` est le résumé des réglages. Utilisez `/bienvenue`, `/depart`, `/langue` et `/journal` pour ouvrir séparément chaque panneau de gestion. `/verification` configure le CAPTCHA ; `/tickets` reste indépendant.
+Les commandes de configuration sont réservées aux membres ayant la permission **Gérer le serveur**. Le panneau privé de `/config` est utilisable uniquement par la personne qui l’a ouvert. Ses boutons donnent accès à un tableau dédié pour l’anti-raid, l’anti-spam, les liens, le filtre de mots, les annonces de bienvenue et de départ, la langue, le journal (y compris les dix dernières entrées), la vérification CAPTCHA et les tickets. Chaque tableau possède ses propres contrôles et enregistre les changements immédiatement. Les panneaux publics de tickets, rôles et CAPTCHA restent utilisables par les membres concernés. `/protocol` reste disponible comme raccourci direct et se trouve aussi dans le menu `/config` : il affiche les incidents des dernières 24 heures, les protections actives et le niveau d’alerte. 🔴 indique qu’une protection anti-raid est active, 🟠 au moins cinq incidents, 🟡 une protection désactivée ou un incident récent, et 🟢 aucun problème détecté. Le filtre de mots supprime automatiquement les messages concernés ; gérez sa liste depuis le tableau **Filtre de mots** de `/config`.
 
 | Commande | Paramètres |
 |---|---|
 | `/protocol` | Tableau de suivi : niveau d’alerte, incidents récents et nombre de protections actives. |
-| `/antiraid` | Tableau indépendant de protection contre les arrivées massives. |
-| `/antispam` | Tableau indépendant de seuil et de durée de la protection anti-spam. |
-| `/antilien` | Tableau indépendant des liens interdits, du mode de filtrage et du rôle exempté. |
-| `/filter ajouter mot` | Ajoute un mot à la liste de filtrage ; les messages qui le contiennent sont supprimés automatiquement. |
-| `/filter retirer mot` | Retire un mot de la liste de filtrage. |
-| `/filter liste` | Affiche les mots filtrés. |
-| `/gestion` | Résumé de l’état des réglages du serveur. |
-| `/bienvenue [image] [effacer_image]` | Tableau de bienvenue, avec choix de salon, texte, ping, aperçu et image. |
-| `/depart [image] [effacer_image]` | Tableau de départ, avec choix de salon, texte, aperçu et image. |
-| `/langue` | Tableau indépendant de langue des notifications. |
-| `/journal` | Tableau indépendant du salon de journal et des alertes de modération. |
-| `/verification` | Panneau indépendant pour configurer la vérification CAPTCHA des nouveaux membres. |
-| `/tickets` | Raccourci direct vers le panneau interactif des tickets : catégorie, rôle support, texte, aperçu et publication. |
+| `/config` | Ouvre les boutons vers le protocole et les tableaux de protection, annonces, langue, journal, CAPTCHA, filtre de mots et tickets. Les images se gèrent avec les options `annonce`, `image` et `effacer_image`. |
 | `/roles ajouter role nom` | Ajoute un rôle au panneau public avec un libellé explicite, sans emoji. |
 | `/roles retirer role` | Retire le rôle du panneau ; cela ne retire pas ce rôle aux membres qui l’ont déjà. |
 | `/roles publier` | Publie dans le salon actuel un panneau où les membres peuvent cliquer pour prendre ou retirer plusieurs rôles. |
 
-Les modifications sont enregistrées immédiatement et la configuration des rôles est indépendante sur chaque serveur où le bot est installé. Le bot doit avoir **Gérer les rôles** et chaque rôle du panneau doit être placé sous son rôle le plus élevé. Le panneau affiche les rôles avec des libellés texte explicites et sans emojis. Configurez un salon dans **Journal de modération** via `/gestion` pour recevoir un rapport à chaque commande slash utilisée sur le serveur : commande et sous-commande, membre, salon et date. Les arguments et motifs ne sont pas recopiés dans ces rapports. Les sanctions et autres actions de modération conservent leurs entrées détaillées distinctes. Les notifications de détection sont également envoyées dans ce salon. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
+Les modifications sont enregistrées immédiatement et la configuration des rôles est indépendante sur chaque serveur où le bot est installé. Le bot doit avoir **Gérer les rôles** et chaque rôle du panneau doit être placé sous son rôle le plus élevé. Le panneau affiche les rôles avec des libellés texte explicites et sans emojis. Configurez un salon dans le tableau **Journal** de `/config` pour recevoir un rapport à chaque commande slash utilisée sur le serveur : commande et sous-commande, membre, salon et date. Les arguments et motifs ne sont pas recopiés dans ces rapports. Les sanctions et autres actions de modération conservent leurs entrées détaillées distinctes. Les notifications de détection sont également envoyées dans ce salon. Le mode anti-raid modifie temporairement le niveau de vérification Discord, puis restaure le niveau précédent, y compris après un redémarrage du bot.
 
 Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Si une nouvelle vague d’arrivées dépasse le seuil pendant une protection anti-raid active, sa durée est prolongée et un événement est ajouté au journal du serveur, sans publier une nouvelle alerte support à chaque arrivée. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
 
-`/aide` affiche les commandes directement, sans catégories, avec une fiche indépendante pour chacune et une navigation par pages. Les tableaux de réglage spécialisés s’ouvrent en lançant leur commande. Les réponses et panneaux utilisent des libellés explicites plutôt que des emojis décoratifs ; des cercles de couleur indiquent les états utiles (vert pour une réussite, rouge pour une option désactivée, orange pour un avertissement et bleu pour une information). Les commandes de jeux et de tirage au sort ont été retirées.
+`/aide` affiche les commandes directement, sans catégories, avec une fiche indépendante pour chacune et une navigation par pages. Les tableaux de réglage s’ouvrent depuis `/config` en choisissant le bouton correspondant. Les réponses et panneaux utilisent des libellés explicites plutôt que des emojis décoratifs ; des cercles de couleur indiquent les états utiles (vert pour une réussite, rouge pour une option désactivée, orange pour un avertissement et bleu pour une information). Les commandes de jeux et de tirage au sort ont été retirées.
 
 ### Vérification CAPTCHA des nouveaux membres
 
 1. Créez un rôle, par exemple **Vérifié**, et placez-le sous le rôle du bot. Accordez au bot **Gérer les rôles**.
 2. Dans les permissions des salons, laissez le salon de vérification visible à `@everyone` et réservez les autres salons aux membres portant le rôle **Vérifié**.
-3. Lancez `/verification`, sélectionnez le rôle, activez la protection, puis cliquez sur **Publier le panneau ici** dans le salon accessible aux nouveaux membres.
+3. Lancez `/config`, choisissez **Vérification**, sélectionnez le rôle, activez la protection, puis cliquez sur **Publier le panneau ici** dans le salon accessible aux nouveaux membres.
 4. Les nouveaux membres cliquent sur le panneau, reçoivent une image privée et saisissent les six caractères dans le formulaire. Le code expire après cinq minutes et cinq réponses incorrectes obligent à recommencer.
 
 Le CAPTCHA limite les inscriptions automatisées simples, mais n’est pas une protection absolue contre des services automatisés capables de reconnaître des images. L’activation de la commande ne modifie pas les permissions des salons : configurez bien l’accès avec le rôle **Vérifié**. La configuration doit être stockée sur un volume persistant.
@@ -89,18 +75,18 @@ Le CAPTCHA limite les inscriptions automatisées simples, mais n’est pas une p
 ## Tickets
 | Commande | Fonction |
 |---|---|
-| `/tickets` | Configure et publie le panneau interactif avec un bouton d’ouverture et un formulaire de demande. |
+| Bouton **Tickets** dans `/config` | Configure et publie le panneau interactif avec un bouton d’ouverture et un formulaire de demande. |
 | Bouton « Ouvrir un ticket » | Ouvre un formulaire privé demandant le sujet et les détails ; crée ensuite un salon visible par le demandeur et l’équipe. |
 | Bouton « Clôturer le ticket » | Permet au demandeur ou à l’équipe autorisée de clôturer le ticket depuis son salon. |
 
 Le bot vérifie la hiérarchie des rôles avant toute action de modération. Pour les filtres automatiques, il doit pouvoir gérer les messages et appliquer des suspensions ; son rôle doit être placé au-dessus des membres concernés. Le mode anti-raid nécessite la permission **Manage Server**.
-Pour activer les tickets, ouvrez le tableau unique `/tickets` : choisissez la catégorie et le rôle support, modifiez le texte, prévisualisez puis publiez le panneau dans le salon actuel. Les membres ouvrent et clôturent leurs demandes avec les boutons du panneau et du ticket. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links**.
+Pour activer les tickets, ouvrez `/config`, puis choisissez **Tickets** : sélectionnez la catégorie et le rôle support, modifiez le texte, prévisualisez puis publiez le panneau dans le salon actuel. Les membres ouvrent et clôturent leurs demandes avec les boutons du panneau et du ticket. Le bot doit disposer de **Manage Channels**, **View Channels**, **Send Messages**, **Read Message History** et **Embed Links**.
 
 ## Configuration
 | Variable | Obligatoire | Description |
 |---|---|---|
 | `DISCORD_TOKEN` | Oui | Jeton du bot Discord. |
-| `MODLOG_CHANNEL_ID` | Non | Salon de journalisation utilisé par défaut ; le panneau **Journal de modération** de `/gestion` permet de le modifier. |
+| `MODLOG_CHANNEL_ID` | Non | Salon de journalisation utilisé par défaut ; le tableau **Journal** de `/config` permet de le modifier. |
 | `CONFIG_PATH` | Non | Chemin du fichier de configuration persistant. Par défaut : `/data/moderation-config.json`. |
 
 Les avertissements, paramètres et images des annonces sont conservés après redémarrage. Le stockage doit être persistant sur l’hébergeur.
