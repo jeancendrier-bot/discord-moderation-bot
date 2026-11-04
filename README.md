@@ -46,18 +46,25 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 
 Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon** et **Se connecter**. La commande `/vocal` est réservée aux membres ayant **Gérer le serveur** ; le bot reste silencieux et n’émet aucun son. Il reste dans le salon tant que `/vocal quitter` n’a pas été utilisée. Le salon choisi est conservé dans la configuration persistante : le bot tente de le rejoindre à son démarrage et de rétablir la connexion après une interruption. Utilisez `/vocal quitter` pour désactiver cette reconnexion. Si le bot ou l’hébergeur est arrêté, il ne peut pas rester connecté pendant l’arrêt ; il reviendra au prochain démarrage.
 
-Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Dans `/gestion`, choisissez **Bienvenue** ou **Départ** pour ouvrir les boutons de réglage du salon, du texte, de l’activation et de l’aperçu. Le ping du nouvel arrivant se règle dans le panneau **Bienvenue**. Pour joindre ou retirer une image, lancez `/gestion` avec l’option `annonce`, puis l’option `image` ou `effacer_image`.
+Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Utilisez `/bienvenue` ou `/depart` pour ouvrir le tableau correspondant et configurer le salon, le texte, l’activation et l’aperçu. Le ping du nouvel arrivant se règle dans `/bienvenue`. Pour joindre ou retirer une image, lancez la commande correspondante avec l’option `image` ou `effacer_image`.
 
 ## Protection automatique
-Les commandes de configuration sont réservées aux membres disposant des permissions nécessaires. Les panneaux privés de `/aide`, `/protocol`, `/gestion`, `/verification` et `/tickets` ne peuvent être utilisés que par la personne qui les a ouverts. Si un panneau ne reconnaît pas son propriétaire, relancez la commande. Les panneaux publics de tickets, rôles et CAPTCHA restent utilisables par les membres concernés. `/protocol` affiche les protections automatiques, les incidents des dernières 24 heures et un niveau d’alerte : 🔴 critique si l’anti-raid est actif, 🟠 élevé à partir de cinq incidents, 🟡 à surveiller si une protection manque ou qu’un incident récent est détecté, et 🟢 normal si tout est actif sans incident récent. `/filter ajouter`, `/filter retirer` et `/filter liste` gèrent les mots interdits ; les messages correspondants sont supprimés automatiquement. `/gestion` affiche les réglages de bienvenue, départ, langue et journaux. `/verification` configure séparément le CAPTCHA ; `/tickets` reste indépendant.
+Les commandes de configuration sont réservées aux membres disposant des permissions nécessaires. Les panneaux privés de `/aide`, `/protocol`, `/gestion`, `/antiraid`, `/antispam`, `/antilien`, `/bienvenue`, `/depart`, `/langue`, `/journal`, `/verification` et `/tickets` ne peuvent être utilisés que par la personne qui les a ouverts. Si un panneau ne reconnaît pas son propriétaire, relancez la commande. Les panneaux publics de tickets, rôles et CAPTCHA restent utilisables par les membres concernés. `/protocol` est un tableau de suivi uniquement : il affiche les incidents des dernières 24 heures, le nombre de protections actives et le niveau d’alerte. 🔴 indique qu’une protection anti-raid est active, 🟠 au moins cinq incidents, 🟡 une protection désactivée ou un incident récent, et 🟢 aucun problème détecté. Chaque protection se règle dans son propre tableau avec `/antiraid`, `/antispam` ou `/antilien`. `/filter ajouter`, `/filter retirer` et `/filter liste` gèrent les mots interdits ; les messages correspondants sont supprimés automatiquement. `/gestion` est le résumé des réglages. Utilisez `/bienvenue`, `/depart`, `/langue` et `/journal` pour ouvrir séparément chaque panneau de gestion. `/verification` configure le CAPTCHA ; `/tickets` reste indépendant.
 
 | Commande | Paramètres |
 |---|---|
-| `/protocol` | Tableau « Sécurité Protocol » : niveau d’alerte, statistiques récentes et réglages anti-raid, anti-spam et anti-liens. |
+| `/protocol` | Tableau de suivi : niveau d’alerte, incidents récents et nombre de protections actives. |
+| `/antiraid` | Tableau indépendant de protection contre les arrivées massives. |
+| `/antispam` | Tableau indépendant de seuil et de durée de la protection anti-spam. |
+| `/antilien` | Tableau indépendant des liens interdits, du mode de filtrage et du rôle exempté. |
 | `/filter ajouter mot` | Ajoute un mot à la liste de filtrage ; les messages qui le contiennent sont supprimés automatiquement. |
 | `/filter retirer mot` | Retire un mot de la liste de filtrage. |
 | `/filter liste` | Affiche les mots filtrés. |
-| `/gestion` | Panneau privé de bienvenue, départ, langue et journaux ; options `annonce`, `image` et `effacer_image` pour les images de bienvenue/départ. |
+| `/gestion` | Résumé de l’état des réglages du serveur. |
+| `/bienvenue [image] [effacer_image]` | Tableau de bienvenue, avec choix de salon, texte, ping, aperçu et image. |
+| `/depart [image] [effacer_image]` | Tableau de départ, avec choix de salon, texte, aperçu et image. |
+| `/langue` | Tableau indépendant de langue des notifications. |
+| `/journal` | Tableau indépendant du salon de journal et des alertes de modération. |
 | `/verification` | Panneau indépendant pour configurer la vérification CAPTCHA des nouveaux membres. |
 | `/tickets` | Raccourci direct vers le panneau interactif des tickets : catégorie, rôle support, texte, aperçu et publication. |
 | `/roles ajouter role nom` | Ajoute un rôle au panneau public avec un libellé explicite, sans emoji. |

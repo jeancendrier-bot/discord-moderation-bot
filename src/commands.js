@@ -74,17 +74,24 @@ export const commands = [
   new SlashCommandBuilder().setName('logs').setDescription('Consulter les dernières entrées du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les dix dernières entrées du journal')),
   new SlashCommandBuilder().setName('protocol').setDescription('Consulter le protocole de sécurité, les alertes et les protections').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('antiraid').setDescription('Ouvrir le tableau de protection anti-raid').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('antispam').setDescription('Ouvrir le tableau de protection anti-spam').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('antilien').setDescription('Ouvrir le tableau de protection anti-liens').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('filter').setDescription('Gérer les mots interdits automatiquement supprimés').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addSubcommand((o) => o.setName('ajouter').setDescription('Ajouter un mot au filtre')
       .addStringOption((option) => option.setName('mot').setDescription('Mot à filtrer (50 caractères maximum)').setMaxLength(50).setRequired(true)))
     .addSubcommand((o) => o.setName('retirer').setDescription('Retirer un mot du filtre')
       .addStringOption((option) => option.setName('mot').setDescription('Mot à retirer').setMaxLength(50).setRequired(true)))
     .addSubcommand((o) => o.setName('liste').setDescription('Afficher les mots actuellement filtrés')),
-  new SlashCommandBuilder().setName('gestion').setDescription('Ouvrir les réglages de bienvenue, départ, langue et journaux').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addStringOption((o) => o.setName('annonce').setDescription('Ouvrir le panneau de bienvenue ou de départ')
-      .addChoices({ name: 'Bienvenue', value: 'welcome' }, { name: 'Départ', value: 'leave' }))
+  new SlashCommandBuilder().setName('gestion').setDescription('Voir le résumé des réglages du serveur').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('bienvenue').setDescription('Ouvrir le tableau de configuration des accueils').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addAttachmentOption((o) => o.setName('image').setDescription('Joindre une image PNG, JPEG, GIF ou WebP (8 Mo max)'))
-    .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de l’annonce choisie')),
+    .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de bienvenue')),
+  new SlashCommandBuilder().setName('depart').setDescription('Ouvrir le tableau de configuration des départs').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addAttachmentOption((o) => o.setName('image').setDescription('Joindre une image PNG, JPEG, GIF ou WebP (8 Mo max)'))
+    .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de départ')),
+  new SlashCommandBuilder().setName('langue').setDescription('Ouvrir le tableau de langue des notifications').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('journal').setDescription('Ouvrir le tableau du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('verification').setDescription('Configurer la vérification CAPTCHA des nouveaux membres').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('tickets').setDescription('Ouvrir le tableau interactif de gestion des tickets').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('roles').setDescription('Configurer les rôles que les membres peuvent choisir').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
@@ -120,8 +127,15 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   vocal: PermissionFlagsBits.ManageGuild,
   logs: PermissionFlagsBits.ManageGuild,
   protocol: PermissionFlagsBits.ManageGuild,
+  antiraid: PermissionFlagsBits.ManageGuild,
+  antispam: PermissionFlagsBits.ManageGuild,
+  antilien: PermissionFlagsBits.ManageGuild,
   filter: PermissionFlagsBits.ManageMessages,
   gestion: PermissionFlagsBits.ManageGuild,
+  bienvenue: PermissionFlagsBits.ManageGuild,
+  depart: PermissionFlagsBits.ManageGuild,
+  langue: PermissionFlagsBits.ManageGuild,
+  journal: PermissionFlagsBits.ManageGuild,
   verification: PermissionFlagsBits.ManageGuild,
   tickets: PermissionFlagsBits.ManageGuild,
   roles: PermissionFlagsBits.ManageGuild,
@@ -364,18 +378,22 @@ const configStatus = (enabled) => enabled ? '🟢 Activé' : '🔴 Désactivé';
 const configuredChannel = (id) => id ? `<#${id}>` : '*Non configuré*';
 const configuredRole = (id) => id ? `<@&${id}>` : '*Aucun rôle*';
 
-function warBoubouEmbed(settings) {
-  const { antiRaid, antiSpam, antiLink, incidents, wordFilter } = settings.security;
+function protocolEmbed(settings) {
+  const { incidents } = settings.security;
+  const protectionsEnabled = [
+    settings.security.antiRaid.enabled,
+    settings.security.antiSpam.enabled,
+    settings.security.antiLink.enabled,
+  ].filter(Boolean).length;
   const recentIncidents = incidents.filter((incident) => Date.now() - incident.at < 24 * 60 * 60 * 1000);
   const incidentCount = (type) => recentIncidents.filter((incident) => incident.type === type).length;
   const activeRaid = settings.security.raidProtection?.restoreAt > Date.now();
-  const enabledCount = [antiRaid.enabled, antiSpam.enabled, antiLink.enabled, wordFilter.length > 0].filter(Boolean).length;
   const alert = activeRaid
     ? { label: '🔴 CRITIQUE — protection anti-raid active', color: 0xed4245 }
     : recentIncidents.length >= 5
       ? { label: '🟠 ÉLEVÉ — activité inhabituelle détectée', color: 0xe67e22 }
-      : recentIncidents.length > 0 || enabledCount < 4
-        ? { label: '🟡 À SURVEILLER — protections ou incidents à vérifier', color: 0xfee75c }
+      : recentIncidents.length > 0 || protectionsEnabled < 3
+        ? { label: '🟡 À SURVEILLER — incidents ou protections désactivées', color: 0xfee75c }
         : { label: '🟢 NORMAL — aucune alerte récente', color: 0x57f287 };
   const lastIncident = recentIncidents.at(-1);
   const incidentSummary = recentIncidents.length
@@ -387,52 +405,12 @@ function warBoubouEmbed(settings) {
     alert.color,
   )
     .addFields(
-      { name: 'Statistiques de sécurité', value: incidentSummary },
-      {
-        name: 'Anti-raid',
-        value: `${configStatus(antiRaid.enabled)} • ${antiRaid.joinThreshold} arrivées en ${antiRaid.intervalSeconds} s • protection ${antiRaid.protectionMinutes} min`,
-      },
-      {
-        name: 'Anti-spam',
-        value: `${configStatus(antiSpam.enabled)} • ${antiSpam.maxMessages} messages en ${antiSpam.intervalSeconds} s • suspension ${antiSpam.timeoutMinutes} min`,
-      },
-      {
-        name: 'Anti-liens',
-        value: `${configStatus(antiLink.enabled)} • ${antiLink.mode === 'all' ? 'Tous les liens' : 'Invitations Discord'} • rôle exempté : ${configuredRole(antiLink.exemptRoleId)}`,
-      },
-      {
-        name: 'Filtre de mots',
-        value: `${wordFilter.length ? '🟢 Activé' : '🟡 Aucun mot configuré'} • ${wordFilter.length} mot(s) • gérer avec \`/filter\``,
-      },
+      { name: 'Incidents des dernières 24 heures', value: incidentSummary },
+      { name: 'Protections automatiques', value: `${protectionsEnabled}/3 actives • tableaux séparés par protection` },
+      { name: 'Tableaux indépendants', value: '`/antiraid` · `/antispam` · `/antilien` · `/filter`' },
     )
-    .setFooter({ text: 'Réglages réservés aux modérateurs • Historique des incidents limité à 30 jours' })
+    .setFooter({ text: 'Protocole de sécurité • Historique des incidents limité à 30 jours' })
     .setTimestamp();
-}
-
-function warBoubouComponents(settings) {
-  const { antiRaid, antiSpam, antiLink } = settings.security;
-  return [
-    new ActionRowBuilder().addComponents(
-      configButton('warboubou:set:antiRaid:toggle', antiRaid.enabled ? 'Désactiver anti-raid' : 'Activer anti-raid', antiRaid.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
-      configButton('warboubou:edit:antiRaid', 'Seuils anti-raid', ButtonStyle.Primary),
-      configButton('warboubou:set:antiSpam:toggle', antiSpam.enabled ? 'Désactiver anti-spam' : 'Activer anti-spam', antiSpam.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
-      configButton('warboubou:edit:antiSpam', 'Seuils anti-spam', ButtonStyle.Primary),
-    ),
-    new ActionRowBuilder().addComponents(
-      configButton('warboubou:set:antiLink:toggle', antiLink.enabled ? 'Désactiver anti-liens' : 'Activer anti-liens', antiLink.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
-      configButton('warboubou:clear:antiLinkRole', 'Retirer le rôle exempté', ButtonStyle.Danger),
-    ),
-    new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder().setCustomId('warboubou:select:antiLinkMode').setPlaceholder('Choisir les liens à bloquer')
-        .addOptions([
-          { label: 'Invitations Discord uniquement', value: 'invites', default: antiLink.mode === 'invites' },
-          { label: 'Tous les liens', value: 'all', default: antiLink.mode === 'all' },
-        ]),
-    ),
-    new ActionRowBuilder().addComponents(
-      new RoleSelectMenuBuilder().setCustomId('warboubou:role:antiLink').setPlaceholder('Choisir le rôle exempté').setMinValues(1).setMaxValues(1),
-    ),
-  ];
 }
 
 const MANAGEMENT_PANEL_OPTIONS = [
@@ -443,7 +421,7 @@ const MANAGEMENT_PANEL_OPTIONS = [
 ];
 
 function managementDashboardEmbed(settings) {
-  return dashboardEmbed('Gestion du serveur', 'Choisissez une section pour voir son état et modifier ses réglages. Chaque changement est enregistré immédiatement.')
+  return dashboardEmbed('Gestion du serveur', 'Résumé des réglages de bienvenue, départ, langue et journal. Chaque section possède son propre tableau de configuration.')
     .addFields(
       { name: 'Bienvenue', value: `${configStatus(settings.welcome.enabled)} • ${configuredChannel(settings.welcome.channelId)}`, inline: true },
       { name: 'Départ', value: `${configStatus(settings.leave.enabled)} • ${configuredChannel(settings.leave.channelId)}`, inline: true },
@@ -624,8 +602,7 @@ function configComponents(settings, key) {
 }
 
 function configPanelComponents(settings, key) {
-  const rows = key === 'security' ? warBoubouComponents(settings) : configComponents(settings, key);
-  return isManagementPanel(key) ? [...rows, managementDashboardSelect()] : rows;
+  return configComponents(settings, key);
 }
 
 function configModal(customId, title, fields) {
@@ -899,6 +876,37 @@ export async function handleSelfRoleInteraction(interaction) {
   return true;
 }
 
+async function handleAnnouncementCommand(interaction, settings, key) {
+  const attachment = interaction.options.getAttachment('image');
+  const clearImage = interaction.options.getBoolean('effacer_image') ?? false;
+  if (attachment && clearImage) {
+    await interaction.reply({ content: 'Joignez une nouvelle image ou choisissez de supprimer l’image actuelle, mais pas les deux.', ephemeral: true });
+    return;
+  }
+  if (attachment || clearImage) {
+    await interaction.deferReply({ ephemeral: true });
+    const previousImage = settings[key].imagePath;
+    const imagePath = attachment
+      ? await saveMemberEventImage(interaction.guildId, key, attachment)
+      : null;
+    settings[key].imagePath = imagePath;
+    await save();
+    if (previousImage && previousImage !== imagePath) await removeMemberEventImage(previousImage);
+    await interaction.editReply({
+      embeds: [configEmbed(settings, key)],
+      components: configPanelComponents(settings, key),
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  await interaction.reply({
+    embeds: [configEmbed(settings, key)],
+    components: configPanelComponents(settings, key),
+    ephemeral: true,
+    allowedMentions: { parse: [] },
+  });
+}
+
 export async function handleCommand(interaction) {
   const name = interaction.commandName;
   const requiredPermission = REQUIRED_COMMAND_PERMISSIONS[name];
@@ -956,8 +964,22 @@ export async function handleCommand(interaction) {
 
   if (name === 'protocol') {
     await interaction.reply({
-      embeds: [warBoubouEmbed(settings)],
-      components: warBoubouComponents(settings),
+      embeds: [protocolEmbed(settings)],
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  const protectionPanels = {
+    antiraid: 'antiRaid',
+    antispam: 'antiSpam',
+    antilien: 'antiLink',
+  };
+  if (protectionPanels[name]) {
+    const key = protectionPanels[name];
+    await interaction.reply({
+      embeds: [configEmbed(settings, key)],
+      components: configComponents(settings, key),
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -1117,36 +1139,28 @@ export async function handleCommand(interaction) {
     return;
   }
   if (name === 'gestion') {
-    const key = interaction.options.getString('annonce');
-    const attachment = interaction.options.getAttachment('image');
-    const clearImage = interaction.options.getBoolean('effacer_image') ?? false;
-    if ((attachment || clearImage) && !key) {
-      await interaction.reply({ content: 'Choisissez « Bienvenue » ou « Départ » dans l’option annonce pour modifier son image.', ephemeral: true });
-      return;
-    }
-    if (attachment && clearImage) {
-      await interaction.reply({ content: 'Joignez une nouvelle image ou choisissez de supprimer l’image actuelle, mais pas les deux.', ephemeral: true });
-      return;
-    }
-    if (key && (attachment || clearImage)) {
-      await interaction.deferReply({ ephemeral: true });
-      const previousImage = settings[key].imagePath;
-      const imagePath = attachment
-        ? await saveMemberEventImage(interaction.guildId, key, attachment)
-        : null;
-      settings[key].imagePath = imagePath;
-      await save();
-      if (previousImage && previousImage !== imagePath) await removeMemberEventImage(previousImage);
-      await interaction.editReply({
-        embeds: [configEmbed(settings, key)],
-        components: configPanelComponents(settings, key),
-        allowedMentions: { parse: [] },
-      });
-      return;
-    }
     await interaction.reply({
-      embeds: [key ? configEmbed(settings, key) : managementDashboardEmbed(settings)],
-      components: key ? configPanelComponents(settings, key) : [managementDashboardSelect()],
+      embeds: [managementDashboardEmbed(settings)],
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  const managementPanels = {
+    bienvenue: 'welcome',
+    depart: 'leave',
+    langue: 'language',
+    journal: 'logs',
+  };
+  if (name === 'bienvenue' || name === 'depart') {
+    await handleAnnouncementCommand(interaction, settings, managementPanels[name]);
+    return;
+  }
+  if (managementPanels[name]) {
+    const key = managementPanels[name];
+    await interaction.reply({
+      embeds: [configEmbed(settings, key)],
+      components: configComponents(settings, key),
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -1649,8 +1663,8 @@ export async function handleConfigInteraction(interaction) {
   const settings = await getGuild(interaction.guildId);
   const isWarBoubou = interaction.customId.startsWith('warboubou:');
   const updateConfig = (key) => interaction.update({
-    embeds: [isWarBoubou ? warBoubouEmbed(settings) : configEmbed(settings, key)],
-    components: configPanelComponents(settings, isWarBoubou ? 'security' : key),
+    embeds: [configEmbed(settings, key)],
+    components: configPanelComponents(settings, key),
     allowedMentions: { parse: [] },
   });
 

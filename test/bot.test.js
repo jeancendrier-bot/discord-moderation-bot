@@ -51,7 +51,7 @@ after(async () => {
 describe('slash command definitions', () => {
   it('serialize unique commands with valid Discord descriptions', async () => {
     const names = commands.map((command) => command.name);
-    assert.equal(names.length, 29);
+    assert.equal(names.length, 36);
     assert.equal(new Set(names).size, names.length);
     for (const commandName of [
       'warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout',
@@ -75,7 +75,12 @@ describe('slash command definitions', () => {
     assert.equal(protocol.default_member_permissions, '32');
     assert.deepEqual(commands.find((command) => command.name === 'filter').options.map((option) => option.name), ['ajouter', 'retirer', 'liste']);
     assert.equal(commands.find((command) => command.name === 'filter').default_member_permissions, '8192');
-    assert.deepEqual(commands.find((command) => command.name === 'gestion').options.map((option) => option.name), ['annonce', 'image', 'effacer_image']);
+    assert.deepEqual(commands.find((command) => command.name === 'gestion').options, []);
+    for (const commandName of ['antiraid', 'antispam', 'antilien', 'langue', 'journal']) {
+      assert.deepEqual(commands.find((command) => command.name === commandName).options, []);
+    }
+    assert.deepEqual(commands.find((command) => command.name === 'bienvenue').options.map((option) => option.name), ['image', 'effacer_image']);
+    assert.deepEqual(commands.find((command) => command.name === 'depart').options.map((option) => option.name), ['image', 'effacer_image']);
     assert.ok(commands.some((command) => command.name === 'verification'));
     assert.ok(commands.some((command) => command.name === 'serverinfo'));
     assert.ok(commands.some((command) => command.name === 'support'));
@@ -210,7 +215,19 @@ describe('slash command definitions', () => {
     await handleCommand(protocol);
     assert.equal(protocol.response.embeds[0].data.title, 'Sécurité Protocol');
     assert.match(protocol.response.embeds[0].data.description, /🟡 À SURVEILLER/);
-    assert.ok(protocol.response.embeds[0].data.fields.some((field) => field.name === 'Statistiques de sécurité'));
+    assert.ok(protocol.response.embeds[0].data.fields.some((field) => field.name === 'Incidents des dernières 24 heures'));
+    assert.equal(protocol.response.components, undefined);
+
+    for (const [commandName, title] of [
+      ['antiraid', 'Protection anti-raid'],
+      ['antispam', 'Protection anti-spam'],
+      ['antilien', 'Filtre anti-liens'],
+    ]) {
+      const panel = makeInteraction(commandName);
+      await handleCommand(panel);
+      assert.equal(panel.response.embeds[0].data.title, title);
+      assert.ok(panel.response.components.length > 0);
+    }
 
     const verification = makeInteraction('verification');
     await handleCommand(verification);
@@ -481,7 +498,7 @@ describe('slash command definitions', () => {
     }
   });
 
-  it('shows security status in the protection panel and separates server management', async () => {
+  it('opens independent security and management panels', async () => {
     const interaction = {
       commandName: 'protocol',
       guildId: '123456789012345650',
@@ -492,11 +509,7 @@ describe('slash command definitions', () => {
     await handleCommand(interaction);
     assert.equal(interaction.response.ephemeral, true);
     assert.equal(interaction.response.embeds[0].data.title, 'Sécurité Protocol');
-    const securitasIds = interaction.response.components.flatMap((row) => row.components.map((component) => component.data.custom_id));
-    assert.equal(securitasIds.some((id) => id === 'gestion:dashboard'), false);
-    assert.ok(securitasIds.some((id) => id === 'warboubou:edit:antiRaid'));
-    assert.ok(securitasIds.some((id) => id === 'warboubou:edit:antiSpam'));
-    assert.ok(securitasIds.some((id) => id === 'warboubou:set:antiLink:toggle'));
+    assert.equal(interaction.response.components, undefined);
 
     const gestion = {
       commandName: 'gestion',
@@ -507,33 +520,40 @@ describe('slash command definitions', () => {
     };
     await handleCommand(gestion);
     assert.equal(gestion.response.embeds[0].data.title, 'Gestion du serveur');
-    assert.equal(gestion.response.components[0].components[0].data.custom_id, 'gestion:dashboard');
-    assert.deepEqual(
-      gestion.response.components[0].components[0].toJSON().options.map((option) => option.value),
-      ['logs', 'welcome', 'leave', 'language'],
-    );
+    assert.equal(gestion.response.components, undefined);
+    for (const [commandName, title] of [
+      ['bienvenue', 'Annonce de bienvenue'],
+      ['depart', 'Annonce de départ'],
+      ['langue', 'Langue des notifications'],
+      ['journal', 'Journal de modération'],
+    ]) {
+      const panel = {
+        commandName,
+        guildId: interaction.guildId,
+        memberPermissions: { has: () => true },
+        options: {
+          getAttachment: () => null,
+          getBoolean: () => false,
+        },
+        reply: async (response) => { panel.response = response; },
+      };
+      await handleCommand(panel);
+      assert.equal(panel.response.embeds[0].data.title, title);
+      assert.ok(panel.response.components.length > 0);
+    }
 
-    const panel = {
+    const oldPanel = {
       isButton: () => false,
       isModalSubmit: () => false,
       isStringSelectMenu: () => true,
       isChannelSelectMenu: () => false,
       isRoleSelectMenu: () => false,
-      customId: 'gestion:dashboard',
-      values: ['welcome'],
+      customId: 'securitas:dashboard',
       inGuild: () => true,
       memberPermissions: { has: () => true },
       guildId: interaction.guildId,
-      update: async (response) => { panel.response = response; },
-    };
-    assert.equal(await handleConfigInteraction(panel), true);
-    assert.equal(panel.response.embeds[0].data.title, 'Annonce de bienvenue');
-    assert.ok(panel.response.components.flatMap((row) => row.components)
-      .some((component) => component.data.custom_id === 'gestion:dashboard'));
-
-    const oldPanel = {
-      ...panel,
-      customId: 'securitas:dashboard',
+      user: { id: '123456789012345000' },
+      message: { interactionMetadata: { user: { id: '123456789012345000' } } },
       reply: async (response) => { oldPanel.response = response; },
     };
     assert.equal(await handleConfigInteraction(oldPanel), true);
@@ -895,10 +915,11 @@ describe('moderation commands', () => {
     assert.equal(replied.ephemeral, true);
     assert.match(replied.embeds[0].data.title, /commandes/i);
     assert.doesNotMatch(replied.embeds[0].data.description, /\/protocol/);
+    const protocolPage = Math.floor(commands.findIndex((command) => command.name === 'protocol') / 12);
     const helpInteraction = {
       isStringSelectMenu: () => true,
       isButton: () => false,
-      customId: 'help:command:1',
+      customId: `help:command:${protocolPage}`,
       values: ['protocol'],
       user: { id: '123456789012345000' },
       message: { interactionMetadata: { user: { id: '123456789012345000' } } },
@@ -996,29 +1017,29 @@ describe('moderation commands', () => {
         ...extra,
       });
 
-      const toggle = makeInteraction('button', 'warboubou:set:antiRaid:toggle', {
+      const toggle = makeInteraction('button', 'config:set:antiRaid:toggle', {
         update: async (response) => { toggle.response = response; },
       });
       assert.equal(await handleConfigInteraction(toggle), true);
       assert.equal((await getGuild(guildId)).security.antiRaid.enabled, true);
-      assert.equal(toggle.response.embeds[0].data.title, 'Sécurité Protocol');
+      assert.equal(toggle.response.embeds[0].data.title, 'Protection anti-raid');
 
-      const mode = makeInteraction('string', 'warboubou:select:antiLinkMode', {
+      const mode = makeInteraction('string', 'config:select:antiLinkMode', {
         values: ['all'],
         update: async (response) => { mode.response = response; },
       });
       assert.equal(await handleConfigInteraction(mode), true);
       assert.equal((await getGuild(guildId)).security.antiLink.mode, 'all');
-      assert.equal(mode.response.embeds[0].data.title, 'Sécurité Protocol');
+      assert.equal(mode.response.embeds[0].data.title, 'Filtre anti-liens');
 
-      const edit = makeInteraction('button', 'warboubou:edit:antiSpam', {
+      const edit = makeInteraction('button', 'config:edit:antiSpam', {
         showModal: async (modal) => { edit.modal = modal; },
       });
       assert.equal(await handleConfigInteraction(edit), true);
-      assert.equal(edit.modal.data.custom_id, 'warboubou:save:antiSpam:123456789012345000');
+      assert.equal(edit.modal.data.custom_id, 'config:save:antiSpam:123456789012345000');
 
       const values = { maximum: '7', interval: '12', timeout: '4' };
-      const submit = makeInteraction('modal', 'warboubou:save:antiSpam:123456789012345000', {
+      const submit = makeInteraction('modal', 'config:save:antiSpam:123456789012345000', {
         fields: { getTextInputValue: (key) => values[key] },
         update: async (response) => { submit.response = response; },
       });
@@ -1027,7 +1048,7 @@ describe('moderation commands', () => {
         ((await getGuild(guildId)).security.antiSpam),
         { enabled: false, maxMessages: 7, intervalSeconds: 12, timeoutMinutes: 4 },
       );
-      assert.equal(submit.response.embeds[0].data.title, 'Sécurité Protocol');
+      assert.equal(submit.response.embeds[0].data.title, 'Protection anti-spam');
     });
 
     it('saves ticket panel wording and can preview or publish the active panel', async () => {
@@ -1452,14 +1473,13 @@ describe('moderation commands', () => {
     assert.match(interaction.response.embeds[0].data.description, /Test/);
   });
 
-  it('opens the welcome panel from Gestion and lets administrators toggle the arrival ping', async () => {
+  it('opens the welcome panel from its own command and lets administrators toggle the arrival ping', async () => {
     const guildId = '123456789012345684';
     const interaction = {
-      commandName: 'gestion',
+      commandName: 'bienvenue',
       guildId,
       memberPermissions: { has: () => true },
       options: {
-        getString: () => 'welcome',
         getAttachment: () => null,
         getBoolean: () => false,
       },
