@@ -70,9 +70,9 @@ describe('slash command definitions', () => {
     };
 
     for (const command of commands) inspect(command, `/${command.name}`);
-    const securitas = commands.find((command) => command.name === 'securite');
-    assert.deepEqual(securitas.options, []);
-    assert.equal(securitas.default_member_permissions, '32');
+    const protocol = commands.find((command) => command.name === 'protocol');
+    assert.deepEqual(protocol.options, []);
+    assert.equal(protocol.default_member_permissions, '32');
     assert.deepEqual(commands.find((command) => command.name === 'filter').options.map((option) => option.name), ['ajouter', 'retirer', 'liste']);
     assert.equal(commands.find((command) => command.name === 'filter').default_member_permissions, '8192');
     assert.deepEqual(commands.find((command) => command.name === 'gestion').options.map((option) => option.name), ['annonce', 'image', 'effacer_image']);
@@ -103,44 +103,46 @@ describe('slash command definitions', () => {
     const helpInteraction = { commandName: 'aide', reply: async (message) => { helpInteraction.response = message; } };
     await handleCommand(helpInteraction);
     assert.equal(helpInteraction.response.ephemeral, true);
-    assert.equal(helpInteraction.response.components[0].components[0].data.custom_id, 'help:category');
-    for (const field of helpInteraction.response.embeds[0].data.fields) {
-      assert.ok(field.name.length <= 256, 'help field names fit Discord embed limits');
-      assert.ok(field.value.length <= 1024, 'help field values fit Discord embed limits');
-    }
+    assert.equal(helpInteraction.response.components[0].components[0].data.custom_id, 'help:command:0');
+    assert.equal(helpInteraction.response.components[0].components[0].options.length, 12);
+    assert.match(helpInteraction.response.embeds[0].data.title, /Toutes les commandes/);
+    assert.doesNotMatch(helpInteraction.response.embeds[0].data.description, /catégorie|Configuration et tickets/i);
+    assert.ok(helpInteraction.response.embeds[0].data.description.length <= 4096);
   });
 
-  it('shows related commands in interactive help categories', async () => {
+  it('shows individual command fiches and paginates without categories', async () => {
     const interaction = {
       isStringSelectMenu: () => true,
-      customId: 'help:category',
-      values: ['members'],
+      isButton: () => false,
+      customId: 'help:command:0',
+      values: ['warn'],
       user: { id: '123456789012345000' },
       message: { interactionMetadata: { user: { id: '123456789012345000' } } },
       update: async (response) => { interaction.response = response; },
       reply: async (response) => { interaction.response = response; },
     };
     assert.equal(await handleHelpInteraction(interaction), true);
-    assert.equal(interaction.response.embeds[0].data.title, 'Modération des membres');
-    assert.match(interaction.response.embeds[0].data.description, /\/warn/);
-    assert.match(interaction.response.embeds[0].data.description, /\/ban/);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/warn\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/ban\*\*/);
-    assert.equal(interaction.response.components[0].components[0].data.custom_id, 'help:category');
+    assert.equal(interaction.response.embeds[0].data.title, 'Fiche de commande • /warn');
+    assert.match(interaction.response.embeds[0].data.fields.find((field) => field.name === 'Permission').value, /Modérer les membres/);
+    assert.match(interaction.response.embeds[0].data.fields.find((field) => field.name === 'Paramètres').value, /user/);
 
-    interaction.values = ['channels'];
+    interaction.isStringSelectMenu = () => false;
+    interaction.isButton = () => true;
+    interaction.customId = 'help:page:1';
     await handleHelpInteraction(interaction);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/logs\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/serverinfo\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/support\*\*/);
-    interaction.values = ['configuration'];
-    await handleHelpInteraction(interaction);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/verification\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/tickets\*\*/);
+    assert.match(interaction.response.embeds[0].data.footer.text, /Page 2\/3/);
+    assert.equal(interaction.response.components[0].components[0].options.length, 12);
 
+    interaction.customId = 'help:page:home';
+    await handleHelpInteraction(interaction);
+    assert.match(interaction.response.embeds[0].data.footer.text, /Page 1\/3/);
+
+    interaction.isStringSelectMenu = () => true;
+    interaction.isButton = () => false;
+    interaction.customId = 'help:command:0';
     interaction.values = ['unknown'];
     await handleHelpInteraction(interaction);
-    assert.match(interaction.response.content, /catégorie de commandes n’existe pas/);
+    assert.match(interaction.response.content, /commande ou cette page d’aide n’existe pas/);
   });
 
   it('shows the bot description and support invite from /support', async () => {
@@ -167,11 +169,12 @@ describe('slash command definitions', () => {
     assert.equal(interaction.response.components[0].components[0].data.label, 'Ouvrir le serveur officiel de support');
   });
 
-  it('keeps command help and category controls free of decorative emojis', async () => {
+  it('keeps command help controls free of decorative emojis', async () => {
     const interaction = {
       isStringSelectMenu: () => true,
-      customId: 'help:category',
-      values: ['channels'],
+      isButton: () => false,
+      customId: 'help:command:0',
+      values: ['warn'],
       user: { id: '123456789012345000' },
       client: {},
       message: { interactionMetadata: { user: { id: '123456789012345000' } } },
@@ -180,23 +183,10 @@ describe('slash command definitions', () => {
     };
 
     await handleHelpInteraction(interaction);
-    const channels = interaction.response.embeds[0].data.description;
-    assert.match(channels, /\*\*\/logs\*\*/);
-    assert.match(channels, /\*\*\/serverinfo\*\*/);
-    assert.match(channels, /\*\*\/support\*\*/);
-
-    interaction.values = ['members'];
-    await handleHelpInteraction(interaction);
-    assert.equal(interaction.response.embeds[0].data.title, 'Modération des membres');
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/warn\*\*/);
-
-    interaction.values = ['configuration'];
-    await handleHelpInteraction(interaction);
-    assert.equal(interaction.response.embeds[0].data.title, 'Configuration et tickets');
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/verification\*\*/);
-    assert.match(interaction.response.embeds[0].data.description, /\*\*\/tickets\*\*/);
-    const categoryOptions = interaction.response.components[0].components[0].toJSON().options;
-    assert.equal(categoryOptions[1].emoji, undefined);
+    const commandOptions = interaction.response.components[0].components[0].toJSON().options;
+    assert.equal(commandOptions[0].emoji, undefined);
+    assert.ok(commandOptions.every((option) => option.label.startsWith('/')));
+    assert.equal(interaction.response.components[1].components[0].data.emoji, undefined);
   });
 
   it('uses clear text labels in settings commands', async () => {
@@ -216,11 +206,11 @@ describe('slash command definitions', () => {
       return interaction;
     };
 
-    const securitas = makeInteraction('securite');
-    await handleCommand(securitas);
-    assert.equal(securitas.response.embeds[0].data.title, 'Sécurité Protocol');
-    assert.match(securitas.response.embeds[0].data.description, /🟡 À SURVEILLER/);
-    assert.ok(securitas.response.embeds[0].data.fields.some((field) => field.name === 'Statistiques de sécurité'));
+    const protocol = makeInteraction('protocol');
+    await handleCommand(protocol);
+    assert.equal(protocol.response.embeds[0].data.title, 'Sécurité Protocol');
+    assert.match(protocol.response.embeds[0].data.description, /🟡 À SURVEILLER/);
+    assert.ok(protocol.response.embeds[0].data.fields.some((field) => field.name === 'Statistiques de sécurité'));
 
     const verification = makeInteraction('verification');
     await handleCommand(verification);
@@ -229,8 +219,10 @@ describe('slash command definitions', () => {
     const management = makeInteraction('gestion');
     await handleCommand(management);
     const fields = management.response.embeds[0].data.fields;
-    assert.equal(fields.find((field) => field.name.endsWith('Notifications')).name, 'Notifications');
-    assert.equal(fields.find((field) => field.name.endsWith('Journal')).name, 'Journal');
+    assert.ok(fields.some((field) => field.name === 'Bienvenue'));
+    assert.ok(fields.some((field) => field.name === 'Départ'));
+    assert.equal(fields.find((field) => field.name === 'Langue').value, 'Français');
+    assert.ok(fields.some((field) => field.name === 'Journal'));
   });
 
   it('records every slash command invocation in the configured moderation journal', async () => {
@@ -275,8 +267,9 @@ describe('slash command definitions', () => {
   it('prevents another user from interacting with a private help panel', async () => {
     const interaction = {
       isStringSelectMenu: () => true,
-      customId: 'help:category',
-      values: ['members'],
+      isButton: () => false,
+      customId: 'help:command:0',
+      values: ['warn'],
       user: { id: '123456789012345001' },
       message: { interactionMetadata: { user: { id: '123456789012345000' } } },
       reply: async (response) => { interaction.response = response; },
@@ -490,7 +483,7 @@ describe('slash command definitions', () => {
 
   it('shows security status in the protection panel and separates server management', async () => {
     const interaction = {
-      commandName: 'securite',
+      commandName: 'protocol',
       guildId: '123456789012345650',
       memberPermissions: { has: () => true },
       reply: async (response) => { interaction.response = response; },
@@ -892,6 +885,7 @@ describe('configuration store', () => {
 describe('moderation commands', () => {
   it('shows help without creating a guild configuration', async () => {
     let replied;
+    let updated;
     const interaction = {
       commandName: 'aide',
       reply: async (message) => { replied = message; },
@@ -900,7 +894,19 @@ describe('moderation commands', () => {
     await handleCommand(interaction);
     assert.equal(replied.ephemeral, true);
     assert.match(replied.embeds[0].data.title, /commandes/i);
-    assert.match(replied.embeds[0].data.fields.map((field) => field.value).join('\n'), /\/securite/);
+    assert.doesNotMatch(replied.embeds[0].data.description, /\/protocol/);
+    const helpInteraction = {
+      isStringSelectMenu: () => true,
+      isButton: () => false,
+      customId: 'help:command:1',
+      values: ['protocol'],
+      user: { id: '123456789012345000' },
+      message: { interactionMetadata: { user: { id: '123456789012345000' } } },
+      update: async (response) => { updated = response; },
+      reply: async () => {},
+    };
+    await handleHelpInteraction(helpInteraction);
+    assert.equal(updated.embeds[0].data.title, 'Fiche de commande • /protocol');
     const persisted = JSON.parse(await readFile(process.env.CONFIG_PATH, 'utf8'));
     assert.equal(persisted.guilds['123456789012345677'], undefined);
   });
@@ -1983,7 +1989,7 @@ describe('automatic protections', () => {
     assert.equal((await getGuild(guildId)).security.incidents.at(-1).type, 'filter');
 
     const dashboard = {
-      commandName: 'securite',
+      commandName: 'protocol',
       guildId,
       memberPermissions: { has: () => true },
       reply: async (response) => { dashboard.response = response; },

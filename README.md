@@ -9,7 +9,7 @@ Bot Discord pour la modération, les tickets privés et la protection automatiqu
 2. Dans **Bot > Privileged Gateway Intents**, activez **Server Members Intent** et **Message Content Intent**.
 3. Invitez le bot avec les portées `bot` et `applications.commands`, ainsi que les permissions nécessaires : **View Channels**, **Send Messages**, **Send Polls**, **Read Message History**, **Embed Links**, **Attach Files**, **Manage Server**, **Manage Roles**, **Manage Channels**, **Manage Messages**, **Moderate Members**, **Manage Nicknames**, **Kick Members** et **Ban Members**.
 4. Déployez le modèle FadeHost et définissez la variable d’environnement `DISCORD_TOKEN`.
-5. Lancez `/securite` pour consulter les alertes et configurer les protections anti-raid, anti-spam et anti-liens, puis `/gestion` pour les réglages de bienvenue, départ, langue et journaux.
+5. Lancez `/protocol` pour consulter le niveau d’alerte et configurer les protections anti-raid, anti-spam et anti-liens, puis `/gestion` pour les réglages de bienvenue, départ, langue et journaux.
 6. Configurez et publiez le panneau de tickets depuis le tableau interactif `/tickets`.
 7. Configurez les rôles à choix libre avec `/roles ajouter`, puis publiez le panneau avec `/roles publier`.
 
@@ -19,7 +19,7 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 ## Modération
 | Commande | Fonction |
 |---|---|
-| `/aide` | Ouvre un panneau privé avec les commandes regroupées par catégorie et leurs permissions. |
+| `/aide` | Ouvre un catalogue privé paginé : chaque commande possède sa fiche avec ses paramètres et permissions. |
 | `/warn user reason` | Consigne un avertissement officiel et en informe le membre par message privé. |
 | `/warnings user [page]` | Consulte le dossier des avertissements (10 par page ; affiche la page la plus récente par défaut). |
 | `/unwarn user number` | Retire un avertissement précis, repéré avec `/warnings`. |
@@ -49,11 +49,11 @@ Pour rejoindre un salon vocal, le bot a besoin des permissions **Voir le salon**
 Pour les annonces, le texte accepte `{user}` (mention du membre accueilli), `{username}`, `{server}` et `{memberCount}`. Dans `/gestion`, choisissez **Bienvenue** ou **Départ** pour ouvrir les boutons de réglage du salon, du texte, de l’activation et de l’aperçu. Le ping du nouvel arrivant se règle dans le panneau **Bienvenue**. Pour joindre ou retirer une image, lancez `/gestion` avec l’option `annonce`, puis l’option `image` ou `effacer_image`.
 
 ## Protection automatique
-Les commandes de configuration sont réservées aux membres disposant des permissions nécessaires. Les panneaux privés de `/aide`, `/securite`, `/gestion`, `/verification` et `/tickets` ne peuvent être utilisés que par la personne qui les a ouverts. Si un panneau ne reconnaît pas son propriétaire, relancez la commande. Les panneaux publics de tickets, rôles et CAPTCHA restent utilisables par les membres concernés. `/securite` affiche les protections automatiques, les incidents des dernières 24 heures et un niveau d’alerte : 🔴 critique si l’anti-raid est actif, 🟠 élevé à partir de cinq incidents, 🟡 à surveiller si une protection manque ou qu’un incident récent est détecté, et 🟢 normal si tout est actif sans incident récent. `/filter ajouter`, `/filter retirer` et `/filter liste` gèrent les mots interdits ; les messages correspondants sont supprimés automatiquement. `/gestion` affiche les réglages de bienvenue, départ, langue et journaux. `/verification` configure séparément le CAPTCHA ; `/tickets` reste indépendant.
+Les commandes de configuration sont réservées aux membres disposant des permissions nécessaires. Les panneaux privés de `/aide`, `/protocol`, `/gestion`, `/verification` et `/tickets` ne peuvent être utilisés que par la personne qui les a ouverts. Si un panneau ne reconnaît pas son propriétaire, relancez la commande. Les panneaux publics de tickets, rôles et CAPTCHA restent utilisables par les membres concernés. `/protocol` affiche les protections automatiques, les incidents des dernières 24 heures et un niveau d’alerte : 🔴 critique si l’anti-raid est actif, 🟠 élevé à partir de cinq incidents, 🟡 à surveiller si une protection manque ou qu’un incident récent est détecté, et 🟢 normal si tout est actif sans incident récent. `/filter ajouter`, `/filter retirer` et `/filter liste` gèrent les mots interdits ; les messages correspondants sont supprimés automatiquement. `/gestion` affiche les réglages de bienvenue, départ, langue et journaux. `/verification` configure séparément le CAPTCHA ; `/tickets` reste indépendant.
 
 | Commande | Paramètres |
 |---|---|
-| `/securite` | Tableau « Sécurité Protocol » : niveau d’alerte, statistiques récentes et réglages anti-raid, anti-spam et anti-liens. |
+| `/protocol` | Tableau « Sécurité Protocol » : niveau d’alerte, statistiques récentes et réglages anti-raid, anti-spam et anti-liens. |
 | `/filter ajouter mot` | Ajoute un mot à la liste de filtrage ; les messages qui le contiennent sont supprimés automatiquement. |
 | `/filter retirer mot` | Retire un mot de la liste de filtrage. |
 | `/filter liste` | Affiche les mots filtrés. |
@@ -68,7 +68,7 @@ Les modifications sont enregistrées immédiatement et la configuration des rôl
 
 Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Si une nouvelle vague d’arrivées dépasse le seuil pendant une protection anti-raid active, sa durée est prolongée et un événement est ajouté au journal du serveur, sans publier une nouvelle alerte support à chaque arrivée. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
 
-`/aide` regroupe les commandes en trois panneaux : modération des membres, salons et outils, configuration et tickets. Les réponses et panneaux utilisent des libellés explicites plutôt que des emojis décoratifs ; des cercles de couleur indiquent les états utiles (vert pour une réussite, rouge pour une option désactivée, orange pour un avertissement et bleu pour une information). Les commandes de jeux et de tirage au sort ont été retirées. Les commandes d’action restent disponibles individuellement dans le menu slash de Discord ; les sous-actions proches comme `/unban retirer` et `/unban liste` restent réunies sous `/unban`.
+`/aide` affiche les commandes directement, sans catégories, avec une fiche indépendante pour chacune et une navigation par pages. Les tableaux de réglage spécialisés s’ouvrent en lançant leur commande. Les réponses et panneaux utilisent des libellés explicites plutôt que des emojis décoratifs ; des cercles de couleur indiquent les états utiles (vert pour une réussite, rouge pour une option désactivée, orange pour un avertissement et bleu pour une information). Les commandes de jeux et de tirage au sort ont été retirées.
 
 ### Vérification CAPTCHA des nouveaux membres
 

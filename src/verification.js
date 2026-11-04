@@ -152,7 +152,9 @@ function makeStartResponse(guildId, userId) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('Vérification humaine')
-    .setDescription('Recopiez les **6 caractères** de l’image dans le formulaire. Le code expire dans 5 minutes.');
+    .setDescription('Recopiez les **6 caractères** de l’image dans le formulaire. Le code expire dans 5 minutes.')
+    .setFooter({ text: 'Vérification privée • 5 tentatives maximum' })
+    .setTimestamp();
   return {
     embeds: [embed],
     files: [new AttachmentBuilder(createCaptchaImage(code), { name: 'verification.png' })],

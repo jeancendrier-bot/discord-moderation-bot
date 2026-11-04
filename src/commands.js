@@ -73,7 +73,7 @@ export const commands = [
     .addSubcommand((o) => o.setName('quitter').setDescription('Quitter le salon et désactiver la reconnexion')),
   new SlashCommandBuilder().setName('logs').setDescription('Consulter les dernières entrées du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les dix dernières entrées du journal')),
-  new SlashCommandBuilder().setName('securite').setDescription('Consulter les alertes et gérer les protections automatiques').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('protocol').setDescription('Consulter le protocole de sécurité, les alertes et les protections').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('filter').setDescription('Gérer les mots interdits automatiquement supprimés').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addSubcommand((o) => o.setName('ajouter').setDescription('Ajouter un mot au filtre')
       .addStringOption((option) => option.setName('mot').setDescription('Mot à filtrer (50 caractères maximum)').setMaxLength(50).setRequired(true)))
@@ -119,7 +119,7 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   nickname: PermissionFlagsBits.ManageNicknames,
   vocal: PermissionFlagsBits.ManageGuild,
   logs: PermissionFlagsBits.ManageGuild,
-  securite: PermissionFlagsBits.ManageGuild,
+  protocol: PermissionFlagsBits.ManageGuild,
   filter: PermissionFlagsBits.ManageMessages,
   gestion: PermissionFlagsBits.ManageGuild,
   verification: PermissionFlagsBits.ManageGuild,
@@ -127,64 +127,113 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   roles: PermissionFlagsBits.ManageGuild,
 };
 
-const HELP_GROUPS = [
-  {
-    name: 'Modération des membres',
-    value: 'members',
-    description: 'Avertissements, suspensions, exclusions et bannissements.',
-    permission: 'La permission requise est indiquée par Discord pour chaque commande.',
-    commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'nickname'],
-  },
-  {
-    name: 'Salons et outils',
-    value: 'channels',
-    description: 'Nettoyage, contrôle des salons, sondages et informations.',
-    permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
-    commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'support', 'userinfo', 'avatar', 'sondage'],
-  },
-  {
-    name: 'Configuration et tickets',
-    value: 'configuration',
-    description: 'Panneaux de sécurité et de gestion, CAPTCHA et système de tickets.',
-    permission: 'Gérer le serveur pour configurer ; les tickets dépendent de leur configuration.',
-    commands: ['securite', 'filter', 'gestion', 'verification', 'tickets', 'roles'],
-  },
-];
+const HELP_PAGE_SIZE = 12;
 
-function helpPanelEmbed(groupValue = 'home') {
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setFooter({ text: 'Commandes slash • Les permissions dépendent de l’action' });
-  if (groupValue === 'home') {
-    return embed
-      .setTitle('Centre de commandes')
-      .setDescription('Choisissez une catégorie pour voir les commandes correspondantes. Les actions habituelles restent accessibles directement avec `/commande`.')
-      .addFields(HELP_GROUPS.map((group) => ({
-        name: group.name,
-        value: `${group.description}\nCommandes : ${group.commands.map((commandName) => `/${commandName}`).join(' · ')}`,
-      })));
-  }
-  const group = HELP_GROUPS.find((item) => item.value === groupValue);
-  if (!group) return null;
-  return embed
-    .setTitle(group.name)
-    .setDescription(group.commands.map((commandName) => {
-      const command = commands.find((entry) => entry.name === commandName);
-      return `**/${commandName}** — ${command.description}`;
-    }).join('\n'))
-    .addFields({ name: 'Permissions et utilisation', value: group.permission });
+function dashboardEmbed(title, description, color = 0x5865f2) {
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(description)
+    .setTimestamp();
 }
 
-function helpPanelComponents() {
-  return [new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('help:category')
-      .setPlaceholder('Afficher les commandes par catégorie')
-      .addOptions(
-        { label: 'Toutes les catégories', value: 'home' },
-        ...HELP_GROUPS.map(({ name, value }) => ({ label: name, value })),
-      ),
-  )];
+function helpPanelEmbed(page = 0, selectedCommand = null) {
+  const embed = dashboardEmbed('Fiche de commande', 'Détails de la commande sélectionnée.');
+  if (selectedCommand) {
+    const command = commands.find((entry) => entry.name === selectedCommand);
+    if (!command) return null;
+    const subcommands = command.options.filter((option) => option.type === 1);
+    const fields = subcommands.length
+      ? subcommands.map((subcommand) => ({
+        name: `/${command.name} ${subcommand.name}`,
+        value: `${subcommand.description}${subcommand.options?.length
+          ? `\nParamètres : ${subcommand.options.map((option) => `\`${option.name}${option.required ? '*' : ''}\` — ${option.description}`).join(' · ')}`
+          : ''}`,
+      }))
+      : command.options.length
+        ? [{
+          name: 'Paramètres',
+          value: command.options.map((option) => `\`${option.name}${option.required ? '*' : ''}\` — ${option.description}`).join('\n'),
+        }]
+        : [{ name: 'Paramètres', value: 'Aucun paramètre.' }];
+    const permissionNames = {
+      [String(PermissionFlagsBits.ModerateMembers)]: 'Modérer les membres',
+      [String(PermissionFlagsBits.KickMembers)]: 'Expulser des membres',
+      [String(PermissionFlagsBits.BanMembers)]: 'Bannir des membres',
+      [String(PermissionFlagsBits.ManageMessages)]: 'Gérer les messages',
+      [String(PermissionFlagsBits.ManageChannels)]: 'Gérer les salons',
+      [String(PermissionFlagsBits.ManageNicknames)]: 'Gérer les pseudonymes',
+      [String(PermissionFlagsBits.ManageGuild)]: 'Gérer le serveur',
+    };
+    const permission = command.default_member_permissions
+      ? permissionNames[command.default_member_permissions] ?? 'La permission indiquée par Discord'
+      : 'Aucune permission spéciale.';
+    return embed
+      .setTitle(`Fiche de commande • /${command.name}`)
+      .setDescription(command.description)
+      .addFields(
+        ...fields,
+        { name: 'Permission', value: permission },
+        { name: 'Ouvrir le tableau', value: `Lancez \`/${command.name}\` pour utiliser la commande${subcommands.length ? ' et choisir une action' : ''}.` },
+      )
+      .setFooter({ text: 'Fiche de commande • Lancez /aide pour consulter les autres commandes' });
+  }
+  const pageCount = Math.ceil(commands.length / HELP_PAGE_SIZE);
+  if (page < 0 || page >= pageCount) return null;
+  const pageCommands = commands.slice(page * HELP_PAGE_SIZE, (page + 1) * HELP_PAGE_SIZE);
+  return embed
+    .setTitle('Toutes les commandes')
+    .setDescription(`Choisissez une commande pour ouvrir sa fiche. Les tableaux de réglage sont accessibles en lançant directement la commande.\n\n${pageCommands.map((command) => `**/${command.name}** — ${command.description}`).join('\n')}`)
+    .setFooter({ text: `Page ${page + 1}/${pageCount} • ${commands.length} commandes • Lancez /aide pour consulter les fiches` });
+}
+
+function helpPanelComponents(page = 0) {
+  const pageCount = Math.ceil(commands.length / HELP_PAGE_SIZE);
+  const pageCommands = commands.slice(page * HELP_PAGE_SIZE, (page + 1) * HELP_PAGE_SIZE);
+  return [
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`help:command:${page}`)
+        .setPlaceholder('Choisir une commande pour voir sa fiche')
+        .addOptions(pageCommands.map((command) => ({
+          label: `/${command.name}`,
+          description: command.description.slice(0, 100),
+          value: command.name,
+        }))),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('help:page:home')
+        .setLabel('Première page')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`help:page:${page - 1}`)
+        .setLabel('Page précédente')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`help:page:${page + 1}`)
+        .setLabel('Page suivante')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= pageCount - 1),
+    ),
+  ];
+}
+
+function helpPageFromInteraction(interaction) {
+  if (interaction.isButton()) {
+    if (interaction.customId === 'help:page:home') return 0;
+    const match = interaction.customId.match(/^help:page:(\d+)$/);
+    return match ? Number(match[1]) : null;
+  }
+  const match = interaction.customId.match(/^help:command:(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function isHelpInteraction(interaction) {
+  return (interaction.isStringSelectMenu() && interaction.customId.startsWith('help:command:'))
+    || (interaction.isButton() && interaction.customId.startsWith('help:page:'));
 }
 
 async function log(interaction, settings, action, target, details) {
@@ -275,10 +324,7 @@ function ticketPanelComponents() {
 }
 
 function ticketPanelEmbed(settings, client) {
-  return new EmbedBuilder()
-    .setTitle(settings.ticketPanelTitle)
-    .setDescription(settings.ticketPanelDescription)
-    .setColor(0x5865f2)
+  return dashboardEmbed(settings.ticketPanelTitle, settings.ticketPanelDescription)
     .setFooter({ text: 'Assistance privée • Votre demande sera visible par vous et l’équipe de support' });
 }
 
@@ -335,10 +381,11 @@ function warBoubouEmbed(settings) {
   const incidentSummary = recentIncidents.length
     ? `24 h : **${recentIncidents.length}** • liens **${incidentCount('link')}** • mots **${incidentCount('filter')}** • spam **${incidentCount('spam')}** • raids **${incidentCount('raid')}**${lastIncident ? `\nDernier incident : <t:${Math.floor(lastIncident.at / 1000)}:R>` : ''}`
     : 'Aucun incident détecté au cours des dernières 24 heures.';
-  return new EmbedBuilder()
-    .setColor(alert.color)
-    .setTitle('Sécurité Protocol')
-    .setDescription(`${alert.label}\n\nVue d’ensemble des protections et de l’activité de sécurité. Les statistiques couvrent les dernières 24 heures.`)
+  return dashboardEmbed(
+    'Sécurité Protocol',
+    `${alert.label}\n\nVue d’ensemble des protections et de l’activité de sécurité. Les statistiques couvrent les dernières 24 heures.`,
+    alert.color,
+  )
     .addFields(
       { name: 'Statistiques de sécurité', value: incidentSummary },
       {
@@ -395,17 +442,15 @@ const MANAGEMENT_PANEL_OPTIONS = [
   { label: 'Langue', value: 'language' },
 ];
 
-function managementDashboardEmbed() {
-  return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle('Gestion du serveur')
-    .setDescription('Choisissez le réglage à modifier. Les changements sont enregistrés immédiatement.')
+function managementDashboardEmbed(settings) {
+  return dashboardEmbed('Gestion du serveur', 'Choisissez une section pour voir son état et modifier ses réglages. Chaque changement est enregistré immédiatement.')
     .addFields(
-      { name: 'Annonces', value: 'Bienvenue et départ', inline: true },
-      { name: 'Notifications', value: 'Langue des notifications automatiques', inline: true },
-      { name: 'Journal', value: 'Salon des journaux et alertes de modération', inline: true },
+      { name: 'Bienvenue', value: `${configStatus(settings.welcome.enabled)} • ${configuredChannel(settings.welcome.channelId)}`, inline: true },
+      { name: 'Départ', value: `${configStatus(settings.leave.enabled)} • ${configuredChannel(settings.leave.channelId)}`, inline: true },
+      { name: 'Langue', value: settings.security.language === 'en' ? 'English' : 'Français', inline: true },
+      { name: 'Journal', value: configuredChannel(settings.logChannelId), inline: true },
     )
-    .setFooter({ text: 'Panneau privé • Réservé aux membres ayant Gérer le serveur' });
+    .setFooter({ text: 'Panneau privé • Les modifications sont enregistrées automatiquement' });
 }
 
 function managementDashboardSelect() {
@@ -423,10 +468,8 @@ function isManagementPanel(key) {
 
 function configEmbed(settings, key) {
   const { security } = settings;
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setFooter({ text: 'Réglage privé • Les changements sont enregistrés immédiatement' })
-    .setTimestamp();
+  const embed = dashboardEmbed('Réglages du serveur', 'État actuel et paramètres de la section sélectionnée.')
+    .setFooter({ text: 'Réglage privé • Les changements sont enregistrés immédiatement' });
 
   if (key === 'language') {
     embed.setTitle('Langue des notifications')
@@ -804,10 +847,10 @@ async function handleSelfRoleCommand(interaction, settings) {
       rows.push(new ActionRowBuilder().addComponents(buttons.slice(index, index + 5)));
     }
     await channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle('Choisissez vos rôles')
-        .setDescription('Cliquez sur un bouton pour obtenir le rôle correspondant. Cliquez de nouveau pour le retirer.')],
+      embeds: [dashboardEmbed(
+        'Choisissez vos rôles',
+        `Cliquez sur un bouton pour obtenir le rôle correspondant. Cliquez de nouveau pour le retirer.\n\n**${buttons.length} rôle(s) disponible(s)**`,
+      ).setFooter({ text: 'Panneau public • Vos choix peuvent être modifiés à tout moment' })],
       components: rows,
       allowedMentions: { parse: [] },
     });
@@ -865,7 +908,7 @@ export async function handleCommand(interaction) {
   }
   if (name === 'aide') {
     await interaction.reply({
-      embeds: [helpPanelEmbed('home')],
+      embeds: [helpPanelEmbed()],
       components: helpPanelComponents(),
       ephemeral: true,
     });
@@ -911,7 +954,7 @@ export async function handleCommand(interaction) {
   const settings = await getGuild(interaction.guildId);
   const getReason = () => interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
 
-  if (name === 'securite') {
+  if (name === 'protocol') {
     await interaction.reply({
       embeds: [warBoubouEmbed(settings)],
       components: warBoubouComponents(settings),
@@ -928,10 +971,11 @@ export async function handleCommand(interaction) {
         ? settings.security.wordFilter.map((entry) => `• ${entry}`).join('\n')
         : 'Aucun mot n’est actuellement filtré.';
       await interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setColor(settings.security.wordFilter.length ? 0x5865f2 : 0xfee75c)
-          .setTitle('Filtre de mots')
-          .setDescription(description.slice(0, 4000))
+        embeds: [dashboardEmbed(
+          'Filtre de mots',
+          description.slice(0, 4000),
+          settings.security.wordFilter.length ? 0x5865f2 : 0xfee75c,
+        )
           .setFooter({ text: `${settings.security.wordFilter.length} mot(s) configuré(s)` })],
         ephemeral: true,
         allowedMentions: { parse: [] },
@@ -1101,7 +1145,7 @@ export async function handleCommand(interaction) {
       return;
     }
     await interaction.reply({
-      embeds: [key ? configEmbed(settings, key) : managementDashboardEmbed()],
+      embeds: [key ? configEmbed(settings, key) : managementDashboardEmbed(settings)],
       components: key ? configPanelComponents(settings, key) : [managementDashboardSelect()],
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -1458,7 +1502,7 @@ function isPanelOwner(interaction) {
 }
 
 export async function handleHelpInteraction(interaction) {
-  if (!interaction.isStringSelectMenu() || interaction.customId !== 'help:category') return false;
+  if (!isHelpInteraction(interaction)) return false;
   if (!isPanelOwner(interaction)) {
     await interaction.reply({
       content: 'Seule la personne qui a ouvert ce panneau peut l’utiliser. Lancez `/aide` pour ouvrir votre propre panneau.',
@@ -1466,15 +1510,20 @@ export async function handleHelpInteraction(interaction) {
     });
     return true;
   }
-  const [groupValue] = interaction.values;
-  const embed = helpPanelEmbed(groupValue);
+  const page = helpPageFromInteraction(interaction);
+  const selectedCommand = interaction.isStringSelectMenu() ? interaction.values[0] : null;
+  const commandIsOnPage = !selectedCommand
+    || commands.slice(page * HELP_PAGE_SIZE, (page + 1) * HELP_PAGE_SIZE).some((command) => command.name === selectedCommand);
+  const embed = Number.isInteger(page) && page >= 0 && page < Math.ceil(commands.length / HELP_PAGE_SIZE) && commandIsOnPage
+    ? helpPanelEmbed(page, selectedCommand)
+    : null;
   if (!embed) {
-    await interaction.reply({ content: 'Cette catégorie de commandes n’existe pas.', ephemeral: true });
+    await interaction.reply({ content: 'Cette commande ou cette page d’aide n’existe pas. Relancez `/aide`.', ephemeral: true });
     return true;
   }
   await interaction.update({
     embeds: [embed],
-    components: helpPanelComponents(),
+    components: helpPanelComponents(page),
     allowedMentions: { parse: [] },
   });
   return true;
@@ -1591,7 +1640,7 @@ export async function handleConfigInteraction(interaction) {
 
   if (interaction.customId === 'securitas:dashboard') {
     await interaction.reply({
-      content: 'Ce tableau a été remplacé. Utilisez `/securite` pour les protections et les alertes, `/gestion` pour les réglages du serveur, ou `/verification` et `/tickets` pour leurs panneaux dédiés.',
+      content: 'Ce tableau a été remplacé. Utilisez `/protocol` pour le protocole, le niveau d’alerte et les protections, `/gestion` pour les réglages du serveur, ou `/verification` et `/tickets` pour leurs panneaux dédiés.',
       ephemeral: true,
     });
     return true;
@@ -1748,10 +1797,10 @@ export async function handleConfigInteraction(interaction) {
         return true;
       }
       await channel.send({
-        embeds: [new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle('Vérification du serveur')
-          .setDescription('Pour accéder au serveur, cliquez sur le bouton ci-dessous et recopiez les caractères affichés dans l’image.')],
+        embeds: [dashboardEmbed(
+          'Vérification du serveur',
+          'Pour accéder au serveur, cliquez sur le bouton ci-dessous et recopiez les caractères affichés dans l’image.',
+        ).setFooter({ text: 'Protection CAPTCHA • Un essai individuel par membre' })],
         components: [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('verification:start').setLabel('Commencer la vérification').setStyle(ButtonStyle.Success),
         )],
