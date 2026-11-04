@@ -124,7 +124,7 @@ function dashboardEmbed(title, description, color = 0x5865f2) {
 }
 
 function helpPanelEmbed(page = 0, selectedCommand = null) {
-  const embed = dashboardEmbed('Fiche de commande', 'Détails de la commande sélectionnée.');
+  const embed = dashboardEmbed('Guide des commandes', 'Bienvenue ! Choisissez une commande dans le menu pour consulter son rôle, ses paramètres et la permission Discord nécessaire. Parcourez les pages pour voir toutes les commandes.');
   if (selectedCommand) {
     const command = commands.find((entry) => entry.name === selectedCommand);
     if (!command) return null;
@@ -154,13 +154,20 @@ function helpPanelEmbed(page = 0, selectedCommand = null) {
     const permission = command.default_member_permissions
       ? permissionNames[command.default_member_permissions] ?? 'La permission indiquée par Discord'
       : 'Aucune permission spéciale.';
+    const nextStep = command.name === 'config'
+      ? 'Lancez `/config`, puis choisissez le bouton du tableau souhaité. Les changements sont enregistrés automatiquement.'
+      : command.name === 'protocol'
+        ? 'Lancez `/protocol` pour voir les alertes, ou ouvrez le bouton **Protocole** dans `/config`.'
+        : subcommands.length
+          ? `Lancez \`/${command.name}\`, puis choisissez l’action souhaitée.`
+          : `Saisissez \`/${command.name}\` dans Discord et renseignez les paramètres affichés.`;
     return embed
       .setTitle(`Fiche de commande • /${command.name}`)
       .setDescription(command.description)
       .addFields(
         ...fields,
         { name: 'Permission', value: permission },
-        { name: 'Ouvrir le tableau', value: `Lancez \`/${command.name}\` pour utiliser la commande${subcommands.length ? ' et choisir une action' : ''}.` },
+        { name: 'Comment l’utiliser', value: nextStep },
       )
       .setFooter({ text: 'Fiche de commande • Lancez /aide pour consulter les autres commandes' });
   }
@@ -169,7 +176,11 @@ function helpPanelEmbed(page = 0, selectedCommand = null) {
   const pageCommands = commands.slice(page * HELP_PAGE_SIZE, (page + 1) * HELP_PAGE_SIZE);
   return embed
     .setTitle('Toutes les commandes')
-    .setDescription(`Choisissez une commande pour ouvrir sa fiche. Les tableaux de réglage sont accessibles en lançant directement la commande.\n\n${pageCommands.map((command) => `**/${command.name}** — ${command.description}`).join('\n')}`)
+    .setDescription(`**Pour commencer :** lancez \`/aide\` pour ouvrir les fiches détaillées. Les réglages du serveur se trouvent dans \`/config\` ; consultez \`/protocol\` pour le niveau d’alerte.\n\n**Commandes de cette page**\n${pageCommands.map((command) => `**/${command.name}** — ${command.description}`).join('\n')}`)
+    .addFields({
+      name: 'Bien utiliser le bot',
+      value: 'Sélectionnez une commande dans le menu, vérifiez les paramètres et la permission indiquée sur sa fiche, puis lancez-la avec `/` dans Discord. Les commandes de modération ne sont proposées que si votre rôle possède les droits nécessaires.',
+    })
     .setFooter({ text: `Page ${page + 1}/${pageCount} • ${commands.length} commandes • Lancez /aide pour consulter les fiches` });
 }
 

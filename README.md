@@ -19,7 +19,7 @@ Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté (s
 ## Modération
 | Commande | Fonction |
 |---|---|
-| `/aide` | Ouvre un catalogue privé paginé : chaque commande possède sa fiche avec ses paramètres et permissions. |
+| `/aide` | Guide privé paginé : toutes les commandes, avec leurs descriptions, paramètres, actions et permissions requises. |
 | `/warn user reason` | Consigne un avertissement officiel et en informe le membre par message privé. |
 | `/warnings user [page]` | Consulte le dossier des avertissements (10 par page ; affiche la page la plus récente par défaut). |
 | `/unwarn user number` | Retire un avertissement précis, repéré avec `/warnings`. |
@@ -61,7 +61,7 @@ Les modifications sont enregistrées immédiatement et la configuration des rôl
 
 Les alertes anti-raid graves et les échecs de restauration de la protection sont aussi relayés au salon support. Si une nouvelle vague d’arrivées dépasse le seuil pendant une protection anti-raid active, sa durée est prolongée et un événement est ajouté au journal du serveur, sans publier une nouvelle alerte support à chaque arrivée. Les journaux détaillés de spam et de liens restent propres à chaque serveur.
 
-`/aide` affiche les commandes directement, sans catégories, avec une fiche indépendante pour chacune et une navigation par pages. Les tableaux de réglage s’ouvrent depuis `/config` en choisissant le bouton correspondant. Les réponses et panneaux utilisent des libellés explicites plutôt que des emojis décoratifs ; des cercles de couleur indiquent les états utiles (vert pour une réussite, rouge pour une option désactivée, orange pour un avertissement et bleu pour une information). Les commandes de jeux et de tirage au sort ont été retirées.
+`/aide` guide les nouveaux membres : il explique comment utiliser les commandes, affiche leur description, leurs paramètres et les permissions requises, et permet d’ouvrir une fiche par commande. Le catalogue est paginé et sans catégories. Lorsqu’il rejoint un serveur, le bot remercie la personne qui l’a ajouté et l’invite à lancer `/aide`. Les tableaux de réglage s’ouvrent depuis `/config` en choisissant le bouton correspondant. Les réponses et panneaux utilisent des libellés explicites plutôt que des emojis décoratifs ; des cercles de couleur indiquent les états utiles (vert pour une réussite, rouge pour une option désactivée, orange pour un avertissement et bleu pour une information). Les commandes de jeux et de tirage au sort ont été retirées.
 
 ### Vérification CAPTCHA des nouveaux membres
 

@@ -103,6 +103,9 @@ describe('slash command definitions', () => {
     assert.equal(helpInteraction.response.components[0].components[0].data.custom_id, 'help:command:0');
     assert.equal(helpInteraction.response.components[0].components[0].options.length, 12);
     assert.match(helpInteraction.response.embeds[0].data.title, /Toutes les commandes/);
+    assert.match(helpInteraction.response.embeds[0].data.description, /Pour commencer/);
+    assert.match(helpInteraction.response.embeds[0].data.description, /`\/config`/);
+    assert.match(helpInteraction.response.embeds[0].data.fields[0].value, /permission indiquée/);
     assert.doesNotMatch(helpInteraction.response.embeds[0].data.description, /catégorie|Configuration et tickets/i);
     assert.ok(helpInteraction.response.embeds[0].data.description.length <= 4096);
   });
@@ -975,7 +978,7 @@ describe('moderation commands', () => {
     await handleCommand(interaction);
     assert.equal(replied.ephemeral, true);
     assert.match(replied.embeds[0].data.title, /commandes/i);
-    assert.doesNotMatch(replied.embeds[0].data.description, /\/protocol/);
+    assert.match(replied.embeds[0].data.description, /\/protocol/);
     const protocolPage = Math.floor(commands.findIndex((command) => command.name === 'protocol') / 12);
     const helpInteraction = {
       isStringSelectMenu: () => true,
@@ -1960,8 +1963,11 @@ describe('member arrival and departure announcements', () => {
 
     assert.equal(await handleGuildJoined(guild), systemChannel.id);
     assert.match(sent.embeds[0].data.description, /<@111111111111111111> d’avoir ajouté \*\*Moderation Bot\*\*/);
+    assert.match(sent.embeds[0].data.description, /toutes mes commandes.*lancez `\/aide`/i);
+    assert.match(sent.embeds[0].data.description, /merci/i);
     const commandFields = sent.embeds[0].data.fields;
     assert.ok(commandFields.some((field) => field.value.includes('**/config**')));
+    assert.ok(commandFields.some((field) => field.value.includes('Ouvrir le menu des réglages du serveur')));
     assert.ok(commandFields.some((field) => field.value.includes('**/warnings**')));
     assert.equal(commandFields.some((field) => field.value.includes('**/quiz**')), false);
     assert.deepEqual(sent.allowedMentions, { users: [inviter.id] });
@@ -1988,6 +1994,7 @@ describe('member arrival and departure announcements', () => {
 
     assert.equal(await handleGuildJoined(guild), systemChannel.id);
     assert.match(sent.embeds[0].data.description, /Merci à toute l’équipe d’avoir ajouté/);
+    assert.match(sent.embeds[0].data.description, /lancez `\/aide`/);
     assert.ok(sent.embeds[0].data.fields.some((field) => field.value.includes('**/aide**')));
     assert.deepEqual(sent.allowedMentions, { parse: [] });
   });

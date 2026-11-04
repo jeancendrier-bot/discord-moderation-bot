@@ -75,10 +75,10 @@ function commandListFields() {
   const lines = commands.map((command) => {
     const subcommands = command.options
       .filter((option) => option.type === ApplicationCommandOptionType.Subcommand)
-      .map((option) => option.name);
+      .map((option) => `\`${option.name}\``);
     return subcommands.length
-      ? `**/${command.name}** : ${subcommands.join(', ')}`
-      : `**/${command.name}**`;
+      ? `**/${command.name}** — ${command.description} (${subcommands.join(', ')})`
+      : `**/${command.name}** — ${command.description}`;
   });
   const fields = [];
   let value = '';
@@ -112,7 +112,7 @@ export async function handleGuildJoined(guild) {
     .setTitle('Merci de m’avoir ajouté !')
     .setDescription(
       `${thanks}\n\n`
-      + 'Voici mes commandes slash disponibles. Utilisez `/aide` dans Discord pour obtenir leur description et les permissions requises.',
+      + 'Pour découvrir toutes mes commandes, leur utilité, leurs paramètres et les permissions nécessaires, lancez `/aide` dans Discord. Pour configurer le serveur, utilisez `/config`.',
     )
     .addFields(commandListFields())
     .setTimestamp();
