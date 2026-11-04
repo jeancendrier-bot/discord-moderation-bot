@@ -2,6 +2,23 @@ import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
 import { commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleSelfRoleInteraction, handleTicketInteraction, logCommandUsage } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
 import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
+import {
+  handleAuditBan,
+  handleAuditBulkMessageDelete,
+  handleAuditChannelCreate,
+  handleAuditChannelDelete,
+  handleAuditChannelUpdate,
+  handleAuditInvite,
+  handleAuditMemberJoin,
+  handleAuditMemberLeave,
+  handleAuditMemberUpdate,
+  handleAuditMessageDelete,
+  handleAuditMessageUpdate,
+  handleAuditRoleCreate,
+  handleAuditRoleDelete,
+  handleAuditRoleUpdate,
+  handleAuditVoiceStateUpdate,
+} from './src/audit-logs.js';
 import { restoreConfiguredVoice } from './src/voice.js';
 import { handleVerificationInteraction } from './src/verification.js';
 import { createRequire } from 'node:module';
@@ -15,7 +32,15 @@ if (!token) {
   process.exit(1);
 }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({ intents: [
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMembers,
+  GatewayIntentBits.GuildModeration,
+  GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.MessageContent,
+  GatewayIntentBits.GuildVoiceStates,
+  GatewayIntentBits.GuildInvites,
+] });
 const knownGuilds = new Set();
 let hasBeenReady = false;
 let shuttingDown = false;
@@ -72,10 +97,76 @@ client.on(Events.MessageCreate, (message) => {
 client.on(Events.GuildMemberAdd, (member) => {
   handleGuildMemberAdd(member).catch((err) => console.error('[moderation-bot] Protection anti-raid en échec :', err));
   handleMemberEvent(member, 'welcome').catch((err) => console.error('[moderation-bot] Annonce de bienvenue impossible :', err));
+  handleAuditMemberJoin(member).catch((err) => console.error('[moderation-bot] Journalisation de l’arrivée impossible :', err));
 });
 
 client.on(Events.GuildMemberRemove, (member) => {
   handleMemberEvent(member, 'leave').catch((err) => console.error('[moderation-bot] Annonce de départ impossible :', err));
+  handleAuditMemberLeave(member).catch((err) => console.error('[moderation-bot] Journalisation du départ impossible :', err));
+});
+
+function reportAuditFailure(eventName, error) {
+  console.error(`[moderation-bot] Journalisation de l’événement ${eventName} impossible :`, error);
+}
+
+client.on(Events.MessageDelete, (message) => {
+  handleAuditMessageDelete(message).catch((error) => reportAuditFailure('suppression de message', error));
+});
+
+client.on(Events.MessageDeleteBulk, (messages, channel) => {
+  handleAuditBulkMessageDelete(messages, channel).catch((error) => reportAuditFailure('suppression groupée de messages', error));
+});
+
+client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
+  handleAuditMessageUpdate(oldMessage, newMessage).catch((error) => reportAuditFailure('modification de message', error));
+});
+
+client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+  handleAuditMemberUpdate(oldMember, newMember).catch((error) => reportAuditFailure('modification de membre', error));
+});
+
+client.on(Events.GuildRoleCreate, (role) => {
+  handleAuditRoleCreate(role).catch((error) => reportAuditFailure('création de rôle', error));
+});
+
+client.on(Events.GuildRoleUpdate, (oldRole, newRole) => {
+  handleAuditRoleUpdate(oldRole, newRole).catch((error) => reportAuditFailure('modification de rôle', error));
+});
+
+client.on(Events.GuildRoleDelete, (role) => {
+  handleAuditRoleDelete(role).catch((error) => reportAuditFailure('suppression de rôle', error));
+});
+
+client.on(Events.ChannelCreate, (channel) => {
+  handleAuditChannelCreate(channel).catch((error) => reportAuditFailure('création de salon', error));
+});
+
+client.on(Events.ChannelUpdate, (oldChannel, newChannel) => {
+  handleAuditChannelUpdate(oldChannel, newChannel).catch((error) => reportAuditFailure('modification de salon', error));
+});
+
+client.on(Events.ChannelDelete, (channel) => {
+  handleAuditChannelDelete(channel).catch((error) => reportAuditFailure('suppression de salon', error));
+});
+
+client.on(Events.GuildBanAdd, (ban) => {
+  handleAuditBan(ban, true).catch((error) => reportAuditFailure('bannissement', error));
+});
+
+client.on(Events.GuildBanRemove, (ban) => {
+  handleAuditBan(ban, false).catch((error) => reportAuditFailure('retrait de bannissement', error));
+});
+
+client.on(Events.InviteCreate, (invite) => {
+  handleAuditInvite(invite, true).catch((error) => reportAuditFailure('création d’invitation', error));
+});
+
+client.on(Events.InviteDelete, (invite) => {
+  handleAuditInvite(invite, false).catch((error) => reportAuditFailure('suppression d’invitation', error));
+});
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  handleAuditVoiceStateUpdate(oldState, newState).catch((error) => reportAuditFailure('activité vocale', error));
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

@@ -17,7 +17,7 @@ import {
 import { getGuild, removeMemberEventImage, save, saveMemberEventImage } from './store.js';
 import { connectConfiguredVoice, disconnectConfiguredVoice } from './voice.js';
 
-const reason = (o) => o.setName('reason').setDescription('Motif communiqué au membre et consigné dans le journal').setMaxLength(400);
+const reason = (o) => o.setName('reason').setDescription('Motif communiqué au membre et consigné dans les logs').setMaxLength(400);
 const user = (o) => o.setName('user').setDescription('Membre visé par cette action').setRequired(true);
 export const commands = [
   new SlashCommandBuilder().setName('aide').setDescription('Consulter les commandes disponibles et les permissions requises'),
@@ -246,7 +246,7 @@ async function log(interaction, settings, action, target, details) {
       ...(details ? [{ name: 'Motif et précisions', value: details.slice(0, 1000) }] : []),
     )
     .setTimestamp();
-  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((err) => console.error('[moderation-bot] Échec de publication dans le journal :', err.message));
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((err) => console.error('[moderation-bot] Échec de publication dans les logs :', err.message));
 }
 
 export async function logCommandUsage(interaction) {
@@ -256,7 +256,7 @@ export async function logCommandUsage(interaction) {
   let channel = interaction.guild.channels.cache.get(settings.logChannelId);
   if (!channel) channel = await interaction.guild.channels.fetch(settings.logChannelId);
   if (!channel?.isTextBased() || typeof channel.send !== 'function') {
-    throw new Error(`Le salon de journal configuré (${settings.logChannelId}) est introuvable ou n’accepte pas les messages.`);
+    throw new Error(`Le salon des logs configuré (${settings.logChannelId}) est introuvable ou n’accepte pas les messages.`);
   }
 
   const subcommandGroup = interaction.options.getSubcommandGroup(false);
@@ -404,9 +404,10 @@ const CONFIG_PANELS = [
   { label: 'Bienvenue', value: 'welcome' },
   { label: 'Départ', value: 'leave' },
   { label: 'Langue', value: 'language' },
-  { label: 'Journal', value: 'logs' },
+  { label: 'Logs', value: 'logs' },
   { label: 'Vérification', value: 'verification' },
   { label: 'Tickets', value: 'tickets' },
+  { label: 'Tableau de rôles', value: 'selfRoles' },
 ];
 const CONFIG_MENU_OPTIONS = [{ label: 'Protocole', value: 'protocol' }, ...CONFIG_PANELS];
 
@@ -463,8 +464,8 @@ function configEmbed(settings, key) {
         { name: 'Étape requise sur le serveur', value: 'Limitez l’accès aux salons aux membres portant le rôle vérifié. Laissez le salon du panneau visible pour @everyone.' },
       );
   } else if (key === 'logs') {
-    embed.setTitle('Journal de modération')
-      .setDescription('Les sanctions et les actions de modération seront publiées dans le salon choisi.')
+    embed.setTitle('Logs du serveur')
+      .setDescription('Choisissez un salon textuel pour centraliser les actions de modération et les principaux événements du serveur : messages modifiés ou supprimés, rôles, membres, salons, bannissements, invitations et activité vocale. Le contenu des messages modifiés/supprimés peut apparaître dans ces logs.')
       .addFields({ name: 'Salon actuel', value: configuredChannel(settings.logChannelId) });
   } else if (key === 'welcome' || key === 'leave') {
     const announcement = settings[key];
@@ -497,6 +498,14 @@ function configEmbed(settings, key) {
     embed.setTitle('Filtre de mots')
       .setDescription('Ajoutez ou retirez des mots. Les messages qui contiennent un mot filtré sont supprimés automatiquement.')
       .addFields({ name: `Mots filtrés (${security.wordFilter.length}/100)`, value: words.slice(0, 4000) });
+  } else if (key === 'selfRoles') {
+    const roleButtons = (settings.selfRoles ?? []).map(({ roleId, label }) => `• **${label}** — <@&${roleId}>`);
+    embed.setTitle('Tableau de rôles personnalisés')
+      .setDescription('Choisissez les rôles que les membres pourront obtenir ou retirer avec les boutons du tableau. Les rôles gérés ou plus hauts que le bot ne peuvent pas être ajoutés.')
+      .addFields(
+        { name: 'Titre du panneau', value: settings.selfRolePanelTitle, inline: true },
+        { name: `Boutons (${roleButtons.length}/25)`, value: roleButtons.length ? roleButtons.join('\n').slice(0, 4000) : 'Aucun bouton configuré.' },
+      );
   }
   return embed;
 }
@@ -554,10 +563,10 @@ function configComponents(settings, key) {
       new RoleSelectMenuBuilder().setCustomId('config:role:verification').setPlaceholder('Choisir le rôle accordé après validation').setMinValues(1).setMaxValues(1),
     ));
   } else if (key === 'logs') {
-    rows.push(configChannelSelect('config:channel:logs', 'Sélectionner le salon du journal'));
+    rows.push(configChannelSelect('config:channel:logs', 'Sélectionner le salon des logs'));
     rows.push(new ActionRowBuilder().addComponents(
       configButton('config:show:logs', 'Voir les dernières entrées', ButtonStyle.Primary),
-      configButton('config:clear:logs', 'Désactiver le journal', ButtonStyle.Danger),
+      configButton('config:clear:logs', 'Désactiver les logs', ButtonStyle.Danger),
     ));
   } else if (key === 'welcome' || key === 'leave') {
     const announcement = settings[key];
@@ -589,6 +598,19 @@ function configComponents(settings, key) {
       configButton('config:preview:tickets', 'Aperçu ici', ButtonStyle.Secondary),
       configButton('config:publish:tickets', 'Publier ici', ButtonStyle.Success),
     ));
+  } else if (key === 'selfRoles') {
+    rows.push(new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder().setCustomId('config:role:selfRoleAdd').setPlaceholder('Choisir un rôle à ajouter comme bouton').setMinValues(1).setMaxValues(1),
+    ));
+    if (settings.selfRoles?.length) {
+      rows.push(new ActionRowBuilder().addComponents(
+        new RoleSelectMenuBuilder().setCustomId('config:role:selfRoleRemove').setPlaceholder('Choisir un bouton à retirer').setMinValues(1).setMaxValues(1),
+      ));
+    }
+    rows.push(new ActionRowBuilder().addComponents(
+      configButton('config:edit:selfRoleTitle', 'Modifier le titre', ButtonStyle.Secondary),
+      configButton('config:publish:selfRoles', 'Publier dans ce salon', ButtonStyle.Success),
+    ));
   }
   return rows;
 }
@@ -618,6 +640,11 @@ function configModal(customId, title, fields) {
 
 function configModalFor(settings, key, ownerId, prefix = 'config') {
   const { security } = settings;
+  if (key === 'selfRoleTitle') {
+    return configModal(`${prefix}:save:selfRoleTitle:${ownerId}`, 'Titre du panneau de rôles', [
+      { id: 'title', label: 'Titre (1–80 caractères)', value: settings.selfRolePanelTitle, maxLength: 80 },
+    ]);
+  }
   if (key === 'tickets') {
     return configModal(`config:save:tickets:${ownerId}`, 'Panneau de tickets', [
       { id: 'title', label: 'Titre (1–100 caractères)', value: settings.ticketPanelTitle, maxLength: 100 },
@@ -750,6 +777,38 @@ async function getAssignableRole(guild, role) {
   return role;
 }
 
+async function buildSelfRolePanel(interaction, settings) {
+  if (!settings.selfRoles?.length) {
+    return { error: 'Ajoutez au moins un bouton de rôle avant de publier le panneau.' };
+  }
+  const buttons = [];
+  for (const entry of settings.selfRoles) {
+    const role = interaction.guild.roles.cache.get(entry.roleId)
+      ?? await interaction.guild.roles.fetch(entry.roleId);
+    if (!role || !(await getAssignableRole(interaction.guild, role))) {
+      return { error: `Le rôle configuré <@&${entry.roleId}> n’est plus attribuable. Retirez-le du tableau et réessayez.` };
+    }
+    buttons.push(new ButtonBuilder()
+      .setCustomId(`self-role:${role.id}`)
+      .setLabel(entry.label)
+      .setStyle(ButtonStyle.Secondary));
+  }
+  const rows = [];
+  for (let index = 0; index < buttons.length; index += 5) {
+    rows.push(new ActionRowBuilder().addComponents(buttons.slice(index, index + 5)));
+  }
+  return {
+    payload: {
+      embeds: [dashboardEmbed(
+        settings.selfRolePanelTitle,
+        `Cliquez sur un bouton pour obtenir le rôle correspondant. Cliquez de nouveau pour le retirer.\n\n**${buttons.length} rôle(s) disponible(s)**`,
+      ).setFooter({ text: 'Panneau public • Vos choix peuvent être modifiés à tout moment' })],
+      components: rows,
+      allowedMentions: { parse: [] },
+    },
+  };
+}
+
 async function handleSelfRoleCommand(interaction, settings) {
   const subcommand = interaction.options.getSubcommand();
   if (subcommand === 'ajouter') {
@@ -797,35 +856,12 @@ async function handleSelfRoleCommand(interaction, settings) {
       await interaction.reply({ content: 'Le panneau doit être publié depuis un salon textuel.', ephemeral: true });
       return;
     }
-    if (!settings.selfRoles?.length) {
-      await interaction.reply({ content: 'Ajoutez au moins un rôle avec `/roles ajouter` avant de publier le panneau.', ephemeral: true });
+    const panel = await buildSelfRolePanel(interaction, settings);
+    if (panel.error) {
+      await interaction.reply({ content: panel.error, ephemeral: true });
       return;
     }
-    const buttons = [];
-    for (const entry of settings.selfRoles) {
-      const role = interaction.guild.roles.cache.get(entry.roleId)
-        ?? await interaction.guild.roles.fetch(entry.roleId);
-      if (!role || !(await getAssignableRole(interaction.guild, role))) {
-        await interaction.reply({ content: `Le rôle configuré <@&${entry.roleId}> n’est plus attribuable. Retirez-le avec \`/roles retirer\` puis réessayez.`, ephemeral: true });
-        return;
-      }
-      buttons.push(new ButtonBuilder()
-        .setCustomId(`self-role:${role.id}`)
-        .setLabel(entry.label)
-        .setStyle(ButtonStyle.Secondary));
-    }
-    const rows = [];
-    for (let index = 0; index < buttons.length; index += 5) {
-      rows.push(new ActionRowBuilder().addComponents(buttons.slice(index, index + 5)));
-    }
-    await channel.send({
-      embeds: [dashboardEmbed(
-        'Choisissez vos rôles',
-        `Cliquez sur un bouton pour obtenir le rôle correspondant. Cliquez de nouveau pour le retirer.\n\n**${buttons.length} rôle(s) disponible(s)**`,
-      ).setFooter({ text: 'Panneau public • Vos choix peuvent être modifiés à tout moment' })],
-      components: rows,
-      allowedMentions: { parse: [] },
-    });
+    await channel.send(panel.payload);
     await interaction.reply({ content: `Le panneau de rôles a été publié dans <#${channel.id}>.`, ephemeral: true });
   }
 }
@@ -925,7 +961,7 @@ export async function handleCommand(interaction) {
       .addFields(
         {
           name: 'Fonctionnalités',
-          value: '• Protection contre les raids, le spam et les liens indésirables\n• Outils de modération et journal des actions\n• Vérification des nouveaux membres et gestion des tickets',
+          value: '• Protection contre les raids, le spam et les liens indésirables\n• Outils de modération et logs des actions\n• Vérification des nouveaux membres et gestion des tickets',
         },
         {
           name: 'Assistance',
@@ -1488,7 +1524,8 @@ export async function handleConfigInteraction(interaction) {
       || interaction.customId === 'gestion:dashboard'
       || interaction.customId === 'securitas:dashboard');
   const configModalMatch = interaction.isModalSubmit()
-    ? interaction.customId.match(/^(config|warboubou):save:(antiSpam|antiRaid|welcome|leave|tickets|wordFilterAdd|wordFilterRemove):(\d{1,20})$/)
+    ? interaction.customId.match(/^(config|warboubou):save:(antiSpam|antiRaid|welcome|leave|tickets|wordFilterAdd|wordFilterRemove|selfRoleTitle):(\d{1,20})$/)
+      ?? interaction.customId.match(/^(config|warboubou):save:selfRoleAdd:(\d{17,20}):(\d{1,20})$/)
     : null;
   const isConfigModal = Boolean(configModalMatch);
   if (!isConfigButton && !isConfigSelect && !isConfigModal) return false;
@@ -1503,7 +1540,7 @@ export async function handleConfigInteraction(interaction) {
     });
     return true;
   }
-  if (isConfigModal && configModalMatch[3] !== interaction.user?.id) {
+  if (isConfigModal && configModalMatch.at(-1) !== interaction.user?.id) {
     await interaction.reply({
       content: 'Seule la personne qui a ouvert ce formulaire peut l’envoyer. Relancez la commande pour ouvrir votre propre panneau.',
       ephemeral: true,
@@ -1582,6 +1619,37 @@ export async function handleConfigInteraction(interaction) {
       await interaction.reply({ content: 'Le rôle sélectionné n’est pas valide.', ephemeral: true });
       return true;
     }
+    if (interaction.customId === 'config:role:selfRoleAdd') {
+      if (!(await getAssignableRole(interaction.guild, role))) {
+        await interaction.reply({ content: 'Choisissez un rôle non géré, placé sous le rôle le plus élevé du bot. Le bot doit aussi avoir **Gérer les rôles**.', ephemeral: true });
+        return true;
+      }
+      if ((settings.selfRoles ?? []).some((entry) => entry.roleId === role.id)) {
+        await interaction.reply({ content: 'Ce rôle possède déjà un bouton dans le tableau.', ephemeral: true });
+        return true;
+      }
+      if ((settings.selfRoles ?? []).length >= 25) {
+        await interaction.reply({ content: 'Le tableau peut contenir au maximum 25 boutons. Retirez-en un avant d’en ajouter un autre.', ephemeral: true });
+        return true;
+      }
+      await interaction.showModal(configModal(
+        `config:save:selfRoleAdd:${role.id}:${interaction.user.id}`,
+        'Ajouter un bouton de rôle',
+        [{ id: 'label', label: 'Texte du bouton (1–80 caractères)', maxLength: 80 }],
+      ));
+      return true;
+    }
+    if (interaction.customId === 'config:role:selfRoleRemove') {
+      const index = (settings.selfRoles ?? []).findIndex((entry) => entry.roleId === role.id);
+      if (index < 0) {
+        await interaction.reply({ content: 'Ce rôle ne possède pas de bouton dans le tableau.', ephemeral: true });
+        return true;
+      }
+      settings.selfRoles.splice(index, 1);
+      await save();
+      await updateConfig('selfRoles');
+      return true;
+    }
     const roleTargets = {
       'config:role:antiLink': { key: 'antiLink', save: () => { settings.security.antiLink.exemptRoleId = role.id; } },
       'warboubou:role:antiLink': { key: 'antiLink', save: () => { settings.security.antiLink.exemptRoleId = role.id; } },
@@ -1642,7 +1710,7 @@ export async function handleConfigInteraction(interaction) {
     if (interaction.customId === 'config:show:logs') {
       if (!settings.logChannelId) {
         await interaction.update({
-          content: 'Aucun salon de journal n’est configuré. Sélectionnez-en un dans ce tableau.',
+          content: 'Aucun salon de logs n’est configuré. Sélectionnez-en un dans ce tableau.',
           embeds: [configEmbed(settings, 'logs')],
           components: configPanelComponents(settings, 'logs'),
           allowedMentions: { parse: [] },
@@ -1652,7 +1720,7 @@ export async function handleConfigInteraction(interaction) {
       const channel = await interaction.guild.channels.fetch(settings.logChannelId);
       if (!channel?.isTextBased() || !channel.messages) {
         await interaction.update({
-          content: 'Le salon de journal configuré n’est plus accessible ou ne permet pas de consulter les messages.',
+          content: 'Le salon de logs configuré n’est plus accessible ou ne permet pas de consulter les messages.',
           embeds: [configEmbed(settings, 'logs')],
           components: configPanelComponents(settings, 'logs'),
           allowedMentions: { parse: [] },
@@ -1665,7 +1733,7 @@ export async function handleConfigInteraction(interaction) {
         .first(10);
       if (entries.length === 0) {
         await interaction.update({
-          content: 'Aucune entrée récente publiée par le bot n’a été trouvée dans le salon de journal.',
+          content: 'Aucune entrée récente publiée par le bot n’a été trouvée dans le salon de logs.',
           embeds: [configEmbed(settings, 'logs')],
           components: configPanelComponents(settings, 'logs'),
           allowedMentions: { parse: [] },
@@ -1673,7 +1741,7 @@ export async function handleConfigInteraction(interaction) {
         return true;
       }
       const embed = new EmbedBuilder()
-        .setTitle('Dernières entrées du journal')
+        .setTitle('Dernières entrées des logs')
         .setColor(0x5865f2)
         .setDescription(entries.map((message) => {
           const detail = message.embeds[0]
@@ -1687,6 +1755,27 @@ export async function handleConfigInteraction(interaction) {
         content: null,
         embeds: [embed],
         components: [new ActionRowBuilder().addComponents(configButton('config:home', 'Retour au menu', ButtonStyle.Secondary))],
+        allowedMentions: { parse: [] },
+      });
+      return true;
+    }
+
+    if (interaction.customId === 'config:publish:selfRoles') {
+      const channel = interaction.channel;
+      if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+        await interaction.reply({ content: 'Le tableau de rôles doit être publié depuis un salon textuel.', ephemeral: true });
+        return true;
+      }
+      const panel = await buildSelfRolePanel(interaction, settings);
+      if (panel.error) {
+        await interaction.reply({ content: panel.error, ephemeral: true });
+        return true;
+      }
+      await channel.send(panel.payload);
+      await interaction.update({
+        content: `Le tableau personnalisé a été publié dans <#${channel.id}>.`,
+        embeds: [configEmbed(settings, 'selfRoles')],
+        components: configPanelComponents(settings, 'selfRoles'),
         allowedMentions: { parse: [] },
       });
       return true;
@@ -1812,7 +1901,7 @@ export async function handleConfigInteraction(interaction) {
       return true;
     }
 
-    const edit = interaction.customId.match(/^(config|warboubou):edit:(antiSpam|antiRaid|welcome|leave|tickets|wordFilterAdd|wordFilterRemove)$/);
+    const edit = interaction.customId.match(/^(config|warboubou):edit:(antiSpam|antiRaid|welcome|leave|tickets|wordFilterAdd|wordFilterRemove|selfRoleTitle)$/);
     if (edit) {
       const [, prefix, key] = edit;
       const modal = key === 'welcome' || key === 'leave'
@@ -1835,8 +1924,36 @@ export async function handleConfigInteraction(interaction) {
   }
 
   const savePrefix = isWarBoubou ? 'warboubou:save:' : 'config:save:';
-  const key = interaction.customId.slice(savePrefix.length).split(':')[0];
-  if (key === 'wordFilterAdd' || key === 'wordFilterRemove') {
+  const [key, roleId] = interaction.customId.slice(savePrefix.length).split(':');
+  if (key === 'selfRoleAdd') {
+    const label = modalValue(interaction, 'label');
+    const role = interaction.guild.roles.cache.get(roleId) ?? await interaction.guild.roles.fetch(roleId);
+    if (!label || label.length > 80) {
+      await interaction.reply({ content: 'Le texte du bouton doit contenir entre 1 et 80 caractères.', ephemeral: true });
+      return true;
+    }
+    if (!role || !(await getAssignableRole(interaction.guild, role))) {
+      await interaction.reply({ content: 'Ce rôle ne peut plus être attribué. Choisissez un rôle valide dans le tableau.', ephemeral: true });
+      return true;
+    }
+    settings.selfRoles ??= [];
+    if (settings.selfRoles.some((entry) => entry.roleId === role.id)) {
+      await interaction.reply({ content: 'Ce rôle possède déjà un bouton dans le tableau.', ephemeral: true });
+      return true;
+    }
+    if (settings.selfRoles.length >= 25) {
+      await interaction.reply({ content: 'Le tableau peut contenir au maximum 25 boutons. Retirez-en un avant d’en ajouter un autre.', ephemeral: true });
+      return true;
+    }
+    settings.selfRoles.push({ roleId: role.id, label });
+  } else if (key === 'selfRoleTitle') {
+    const title = modalValue(interaction, 'title');
+    if (!title || title.length > 80) {
+      await interaction.reply({ content: 'Le titre du tableau doit contenir entre 1 et 80 caractères.', ephemeral: true });
+      return true;
+    }
+    settings.selfRolePanelTitle = title;
+  } else if (key === 'wordFilterAdd' || key === 'wordFilterRemove') {
     const word = modalValue(interaction, 'word').normalize('NFC').toLocaleLowerCase('fr-FR');
     if (!word || word.length > 50 || /\s/u.test(word)) {
       await interaction.reply({ content: 'Saisissez un seul mot de 1 à 50 caractères, sans espace.', ephemeral: true });
@@ -1900,6 +2017,7 @@ export async function handleConfigInteraction(interaction) {
   }
 
   await save();
-  await updateConfig(key === 'wordFilterAdd' || key === 'wordFilterRemove' ? 'wordFilter' : key);
+  const panelKey = ['wordFilterAdd', 'wordFilterRemove'].includes(key) ? 'wordFilter' : ['selfRoleAdd', 'selfRoleTitle'].includes(key) ? 'selfRoles' : key;
+  await updateConfig(panelKey);
   return true;
 }

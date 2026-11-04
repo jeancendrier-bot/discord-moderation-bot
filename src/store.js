@@ -174,6 +174,10 @@ export async function getGuild(guildId) {
     settings.ticketPanelDescription = 'Cliquez sur le bouton ci-dessous pour transmettre une demande privée à l’équipe de support. Décrivez clairement votre besoin ; un membre de l’équipe vous répondra dans votre ticket.';
     changed = true;
   }
+  if (typeof settings.selfRolePanelTitle !== 'string' || !settings.selfRolePanelTitle.trim()) {
+    settings.selfRolePanelTitle = 'Choisissez vos rôles';
+    changed = true;
+  }
   if (!Object.hasOwn(settings, 'voiceChannelId')) {
     settings.voiceChannelId = null;
     changed = true;

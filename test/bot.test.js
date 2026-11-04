@@ -20,12 +20,15 @@ let handleTicketInteraction;
 let handleVerificationInteraction;
 let logCommandUsage;
 let security;
+let handleAuditMemberUpdate;
+let handleAuditRoleUpdate;
 
 before(async () => {
   dataDirectory = await mkdtemp(join(tmpdir(), 'moderation-bot-test-'));
   process.env.CONFIG_PATH = join(dataDirectory, 'config.json');
   ({ getGuild, removeMemberEventImage, save, saveMemberEventImage } = await import('../src/store.js'));
   ({ commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleSelfRoleInteraction, handleTicketInteraction, logCommandUsage } = await import('../src/commands.js'));
+  ({ handleAuditMemberUpdate, handleAuditRoleUpdate } = await import('../src/audit-logs.js'));
   rawHandleConfigInteraction = handleConfigInteraction;
   const configHandler = handleConfigInteraction;
   handleConfigInteraction = async (interaction) => {
@@ -217,7 +220,7 @@ describe('slash command definitions', () => {
     await handleCommand(config);
     assert.equal(config.response.embeds[0].data.title, 'Configuration du serveur');
     const buttons = config.response.components.flatMap((row) => row.components);
-    assert.equal(buttons.length, 11);
+    assert.equal(buttons.length, 12);
     assert.ok(buttons.every((button) => !button.data.emoji));
     assert.deepEqual(buttons.map((button) => button.data.custom_id), [
       'config:open:protocol',
@@ -231,6 +234,7 @@ describe('slash command definitions', () => {
       'config:open:logs',
       'config:open:verification',
       'config:open:tickets',
+      'config:open:selfRoles',
     ]);
 
     const ownerId = '123456789012345643';
@@ -539,7 +543,7 @@ describe('slash command definitions', () => {
     await handleCommand(config);
     assert.equal(config.response.embeds[0].data.title, 'Configuration du serveur');
     assert.notEqual(config.response.ephemeral, true);
-    assert.equal(config.response.components.flatMap((row) => row.components).length, 11);
+    assert.equal(config.response.components.flatMap((row) => row.components).length, 12);
     const ownerId = '123456789012345650';
     const welcomeButton = {
       isButton: () => true,
@@ -921,6 +925,7 @@ describe('configuration store', () => {
     assert.equal(first.leave.message, '{username} a quitté {server}.');
     assert.equal(first.voiceChannelId, null);
     assert.equal(first.ticketPanelTitle, 'Contacter le support');
+    assert.equal(first.selfRolePanelTitle, 'Choisissez vos rôles');
     assert.match(first.ticketPanelDescription, /demande privée/);
     assert.deepEqual(first.selfRoles, []);
     assert.equal(first.security.verification.enabled, false);
@@ -1177,6 +1182,89 @@ describe('moderation commands', () => {
       assert.equal(channelMessages[0].embeds[0].data.title, values.title);
       assert.equal(channelMessages[0].components[0].components[0].data.custom_id, 'ticket:open');
       assert.match(publish.response.content, /panneau actif a été publié/);
+    });
+
+    it('creates and publishes a custom role panel from config', async () => {
+      const guildId = '123456789012345696';
+      const ownerId = '123456789012345697';
+      const role = { id: '777777777777777778', name: 'Annonces', position: 2, managed: false };
+      const guild = {
+        roles: { cache: new Collection([[role.id, role]]), fetch: async () => role },
+        members: {
+          me: {
+            permissions: { has: () => true },
+            roles: { highest: { position: 10 } },
+          },
+        },
+      };
+      const ownerMessage = { interactionMetadata: { user: { id: ownerId } } };
+      const select = {
+        isButton: () => false,
+        isModalSubmit: () => false,
+        isStringSelectMenu: () => false,
+        isChannelSelectMenu: () => false,
+        isRoleSelectMenu: () => true,
+        customId: 'config:role:selfRoleAdd',
+        values: [role.id],
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        guild,
+        user: { id: ownerId },
+        message: ownerMessage,
+        showModal: async (modal) => { select.modal = modal; },
+        reply: async (response) => { select.response = response; },
+      };
+      assert.equal(await handleConfigInteraction(select), true);
+      assert.equal(select.modal.data.custom_id, `config:save:selfRoleAdd:${role.id}:${ownerId}`);
+
+      const labelModal = {
+        isButton: () => false,
+        isModalSubmit: () => true,
+        customId: `config:save:selfRoleAdd:${role.id}:${ownerId}`,
+        inGuild: () => true,
+        memberPermissions: { has: () => true },
+        guildId,
+        guild,
+        user: { id: ownerId },
+        fields: { getTextInputValue: () => 'Annonces' },
+        update: async (response) => { labelModal.response = response; },
+        reply: async (response) => { labelModal.response = response; },
+      };
+      assert.equal(await handleConfigInteraction(labelModal), true);
+      assert.deepEqual((await getGuild(guildId)).selfRoles, [{ roleId: role.id, label: 'Annonces' }]);
+
+      const titleEdit = {
+        ...select,
+        isButton: () => true,
+        isRoleSelectMenu: () => false,
+        customId: 'config:edit:selfRoleTitle',
+        showModal: async (modal) => { titleEdit.modal = modal; },
+      };
+      assert.equal(await handleConfigInteraction(titleEdit), true);
+      const titleModal = {
+        ...labelModal,
+        customId: `config:save:selfRoleTitle:${ownerId}`,
+        fields: { getTextInputValue: () => 'Choisis tes notifications' },
+      };
+      await handleConfigInteraction(titleModal);
+      assert.equal((await getGuild(guildId)).selfRolePanelTitle, 'Choisis tes notifications');
+
+      let published;
+      const publish = {
+        ...titleEdit,
+        customId: 'config:publish:selfRoles',
+        channel: {
+          id: '888888888888888889',
+          isTextBased: () => true,
+          send: async (payload) => { published = payload; },
+        },
+        update: async (response) => { publish.response = response; },
+      };
+      assert.equal(await handleConfigInteraction(publish), true);
+      assert.equal(published.embeds[0].data.title, 'Choisis tes notifications');
+      assert.equal(published.components[0].components[0].data.custom_id, `self-role:${role.id}`);
+      assert.match(publish.response.content, /publié/);
     });
 
     it('sends a welcome preview to the configured channel without triggering mentions', async () => {
@@ -1542,6 +1630,63 @@ describe('moderation commands', () => {
     };
     await handleConfigInteraction(displayInteraction);
     assert.match(displayInteraction.response.embeds[0].data.description, /Action de modération/);
+  });
+
+  it('writes member and role changes to the configured server audit log', async () => {
+    const guildId = '123456789012345682';
+    const settings = await getGuild(guildId);
+    const channelId = '987654321098765435';
+    const sent = [];
+    const logChannel = {
+      id: channelId,
+      isTextBased: () => true,
+      send: async (payload) => sent.push(payload),
+    };
+    const guild = {
+      id: guildId,
+      channels: { cache: new Collection([[channelId, logChannel]]) },
+    };
+    settings.logChannelId = channelId;
+    await save();
+
+    const memberId = '123456789012345683';
+    const oldMember = {
+      id: memberId,
+      guild,
+      user: { username: 'Membre' },
+      nickname: null,
+      roles: { cache: new Collection([[guildId, {}], ['777777777777777770', {}]]) },
+      communicationDisabledUntilTimestamp: null,
+    };
+    const newMember = {
+      ...oldMember,
+      roles: { cache: new Collection([[guildId, {}], ['777777777777777771', {}]]) },
+    };
+    assert.equal(await handleAuditMemberUpdate(oldMember, newMember), true);
+    assert.equal(sent[0].embeds[0].data.title, 'Membre modifié');
+    assert.match(sent[0].embeds[0].data.description, /Rôles ajoutés : <@&777777777777777771>/);
+    assert.match(sent[0].embeds[0].data.description, /Rôles retirés : <@&777777777777777770>/);
+    assert.deepEqual(sent[0].allowedMentions, { parse: [] });
+
+    const oldRole = {
+      id: '777777777777777772',
+      name: 'Ancien nom',
+      guild,
+      color: 0,
+      hexColor: '#000000',
+      hoist: false,
+      mentionable: false,
+      permissions: { bitfield: 0n },
+    };
+    const newRole = {
+      ...oldRole,
+      name: 'Nouveau nom',
+      color: 16711680,
+      hexColor: '#ff0000',
+    };
+    assert.equal(await handleAuditRoleUpdate(oldRole, newRole), true);
+    assert.equal(sent[1].embeds[0].data.title, 'Rôle modifié');
+    assert.match(sent[1].embeds[0].data.description, /Nouveau nom/);
   });
 
   it('lists banned accounts through the unban command', async () => {
