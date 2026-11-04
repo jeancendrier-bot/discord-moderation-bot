@@ -178,6 +178,27 @@ export async function getGuild(guildId) {
     settings.voiceChannelId = null;
     changed = true;
   }
+  if (!Array.isArray(settings.selfRoles)) {
+    settings.selfRoles = [];
+    changed = true;
+  } else {
+    const selfRoles = settings.selfRoles.filter((entry) =>
+      entry
+      && typeof entry === 'object'
+      && /^\d{17,20}$/.test(entry.roleId)
+      && typeof entry.label === 'string'
+      && entry.label.length > 0
+      && entry.label.length <= 80,
+    );
+    if (selfRoles.length !== settings.selfRoles.length) {
+      settings.selfRoles = selfRoles;
+      changed = true;
+    }
+    if (selfRoles.some((entry) => Object.hasOwn(entry, 'emoji'))) {
+      settings.selfRoles = selfRoles.map(({ roleId, label }) => ({ roleId, label }));
+      changed = true;
+    }
+  }
   if (Object.hasOwn(settings, 'giveaways')) {
     delete settings.giveaways;
     changed = true;
@@ -216,6 +237,8 @@ export async function getGuild(guildId) {
     antiRaid: { enabled: false, joinThreshold: 8, intervalSeconds: 15, protectionMinutes: 10 },
     verification: { enabled: false, roleId: null },
     raidProtection: null,
+    wordFilter: [],
+    incidents: [],
   };
   for (const [key, defaultValue] of Object.entries(securityDefaults)) {
     if (key === 'antiLink' || key === 'antiSpam' || key === 'antiRaid' || key === 'verification') {
@@ -232,6 +255,35 @@ export async function getGuild(guildId) {
       }
     } else if (!Object.hasOwn(settings.security, key)) {
       settings.security[key] = defaultValue;
+      changed = true;
+    }
+  }
+  if (!Array.isArray(settings.security.wordFilter)) {
+    settings.security.wordFilter = [];
+    changed = true;
+  } else {
+    const wordFilter = [...new Set(settings.security.wordFilter
+      .filter((word) => typeof word === 'string' && word.length > 0 && word.length <= 50 && !/\s/u.test(word))
+      .map((word) => word.normalize('NFC').trim().toLocaleLowerCase('fr-FR')))].sort((left, right) => left.localeCompare(right, 'fr'));
+    if (wordFilter.length !== settings.security.wordFilter.length
+      || wordFilter.some((word, index) => word !== settings.security.wordFilter[index])) {
+      settings.security.wordFilter = wordFilter;
+      changed = true;
+    }
+  }
+  if (!Array.isArray(settings.security.incidents)) {
+    settings.security.incidents = [];
+    changed = true;
+  } else {
+    const retentionCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const incidents = settings.security.incidents
+      .filter((incident) => incident
+        && ['link', 'filter', 'spam', 'raid'].includes(incident.type)
+        && Number.isFinite(incident.at)
+        && incident.at >= retentionCutoff)
+      .slice(-500);
+    if (incidents.length !== settings.security.incidents.length) {
+      settings.security.incidents = incidents;
       changed = true;
     }
   }

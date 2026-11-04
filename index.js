@@ -1,9 +1,13 @@
 import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
-import { commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleTicketInteraction, logCommandUsage } from './src/commands.js';
+import { commands, handleCommand, handleConfigInteraction, handleHelpInteraction, handleSelfRoleInteraction, handleTicketInteraction, logCommandUsage } from './src/commands.js';
 import { handleGuildMemberAdd, handleMessageCreate, restoreRaidProtection } from './src/security.js';
 import { handleBotStatus, handleGuildJoined, handleMemberEvent } from './src/member-events.js';
 import { restoreConfiguredVoice } from './src/voice.js';
 import { handleVerificationInteraction } from './src/verification.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { version } = require('./package.json');
 
 const token = (process.env.DISCORD_TOKEN || '').trim();
 if (!token) {
@@ -20,7 +24,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[moderation-bot] Connecté sous ${c.user.tag} sur ${c.guilds.cache.size} serveur(s).`);
   hasBeenReady = true;
   for (const guildId of c.guilds.cache.keys()) knownGuilds.add(guildId);
-  c.user.setActivity('Version 1.0.1', { type: 3 });
+  c.user.setActivity(`Version ${version}`, { type: 3 });
   await handleBotStatus(c, 'online');
   await restoreRaidProtection(c).catch((err) => console.error('[moderation-bot] Restauration anti-raid impossible :', err.message));
   for (const guild of c.guilds.cache.values()) {
@@ -91,6 +95,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       if (await handleVerificationInteraction(interaction)) return;
+      if (await handleSelfRoleInteraction(interaction)) return;
       if (await handleHelpInteraction(interaction)) return;
       if (await handleTicketInteraction(interaction)) return;
       await handleConfigInteraction(interaction);
@@ -111,13 +116,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (err) {
     console.error('[moderation-bot] Échec de l’interaction :', err);
     const messages = {
-      50001: 'Le bot ne dispose pas de l’accès nécessaire à cette ressource.',
-      50013: 'Le bot ne dispose pas des permissions nécessaires. Vérifiez ses permissions et la position de son rôle.',
-      10003: 'Ce salon n’existe plus ou n’est pas accessible au bot.',
-      10007: 'Ce membre ne fait plus partie du serveur.',
-      10026: 'Aucun bannissement actif ne correspond à cet identifiant.',
+      50001: 'Discord a refusé l’accès à cette ressource. Vérifiez que le bot est toujours sur le serveur et qu’il peut voir le salon concerné.',
+      50013: 'Discord a refusé cette action. Vérifiez les permissions du bot et placez son rôle au-dessus du membre ou du rôle ciblé.',
+      10003: 'Ce salon n’existe plus ou n’est pas accessible au bot. Choisissez un autre salon dans les réglages, si nécessaire.',
+      10007: 'Ce membre ne fait plus partie du serveur. Vérifiez le membre sélectionné puis réessayez.',
+      10026: 'Aucun bannissement actif ne correspond à cet identifiant. Vérifiez l’identifiant Discord et la liste des bannissements.',
     };
-    const text = messages[err.code] || 'L’action n’a pas pu être exécutée. Vérifiez les permissions du bot, la hiérarchie des rôles et les paramètres fournis, puis réessayez.';
+    const text = messages[err.code]
+      || `L’action n’a pas abouti. Vérifiez les permissions du bot, la hiérarchie des rôles et les paramètres, puis réessayez. Si le problème persiste, communiquez ce code à un administrateur : ${err.code ?? 'inconnu'}.`;
     if (interaction.deferred) await interaction.editReply({ content: text }).catch(() => {});
     else if (!interaction.replied) await interaction.reply({ content: text, ephemeral: true }).catch(() => {});
   }

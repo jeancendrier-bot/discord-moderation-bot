@@ -73,7 +73,13 @@ export const commands = [
     .addSubcommand((o) => o.setName('quitter').setDescription('Quitter le salon et désactiver la reconnexion')),
   new SlashCommandBuilder().setName('logs').setDescription('Consulter les dernières entrées du journal de modération').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand((o) => o.setName('afficher').setDescription('Consulter les dix dernières entrées du journal')),
-  new SlashCommandBuilder().setName('securitas').setDescription('Gérer les protections anti-raid, anti-spam et anti-liens').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('securite').setDescription('Consulter les alertes et gérer les protections automatiques').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('filter').setDescription('Gérer les mots interdits automatiquement supprimés').setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addSubcommand((o) => o.setName('ajouter').setDescription('Ajouter un mot au filtre')
+      .addStringOption((option) => option.setName('mot').setDescription('Mot à filtrer (50 caractères maximum)').setMaxLength(50).setRequired(true)))
+    .addSubcommand((o) => o.setName('retirer').setDescription('Retirer un mot du filtre')
+      .addStringOption((option) => option.setName('mot').setDescription('Mot à retirer').setMaxLength(50).setRequired(true)))
+    .addSubcommand((o) => o.setName('liste').setDescription('Afficher les mots actuellement filtrés')),
   new SlashCommandBuilder().setName('gestion').setDescription('Ouvrir les réglages de bienvenue, départ, langue et journaux').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addStringOption((o) => o.setName('annonce').setDescription('Ouvrir le panneau de bienvenue ou de départ')
       .addChoices({ name: 'Bienvenue', value: 'welcome' }, { name: 'Départ', value: 'leave' }))
@@ -81,45 +87,20 @@ export const commands = [
     .addBooleanOption((o) => o.setName('effacer_image').setDescription('Supprimer l’image personnalisée de l’annonce choisie')),
   new SlashCommandBuilder().setName('verification').setDescription('Configurer la vérification CAPTCHA des nouveaux membres').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName('tickets').setDescription('Ouvrir le tableau interactif de gestion des tickets').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName('roles').setDescription('Configurer les rôles que les membres peuvent choisir').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((o) => o.setName('ajouter').setDescription('Ajouter un rôle au panneau public')
+      .addRoleOption((option) => option.setName('role').setDescription('Rôle que les membres pourront prendre ou retirer').setRequired(true))
+      .addStringOption((option) => option.setName('nom').setDescription('Texte affiché sur le bouton').setMinLength(1).setMaxLength(80).setRequired(true)))
+    .addSubcommand((o) => o.setName('retirer').setDescription('Retirer un rôle du panneau')
+      .addRoleOption((option) => option.setName('role').setDescription('Rôle à retirer du panneau').setRequired(true)))
+    .addSubcommand((o) => o.setName('publier').setDescription('Publier le panneau de rôles dans le salon actuel')),
 ].map((c) => c.toJSON());
 
 const COLORS = { warn: 0xfee75c, timeout: 0xe67e22, untimeout: 0x57f287, kick: 0xed4245, ban: 0x992d22, unban: 0x57f287, purge: 0x5865f2, clearwarnings: 0x57f287, lock: 0xed4245, unlock: 0x57f287, nickname: 0x5865f2 };
 const ACTION_LABELS = { warn: 'Avertissement', unwarn: 'Retrait d’un avertissement', timeout: 'Suspension temporaire', untimeout: 'Levée de suspension', kick: 'Exclusion du serveur', ban: 'Bannissement', unban: 'Levée de bannissement', purge: 'Suppression de messages', clearwarnings: 'Suppression des avertissements', lock: 'Verrouillage du salon', unlock: 'Déverrouillage du salon', nickname: 'Modification du pseudonyme' };
-const ACTION_ICONS = {
-  warn: '⚠️',
-  unwarn: '↩️',
-  timeout: '⏳',
-  untimeout: '✅',
-  kick: '👢',
-  ban: '🔨',
-  unban: '🔓',
-  purge: '🧹',
-  clearwarnings: '🗑️',
-  lock: '🔒',
-  unlock: '🔓',
-  nickname: '✏️',
-};
-const successMessage = (message) => `✅ ${message}`;
-const warningMessage = (message) => `⚠️ ${message}`;
+const successMessage = (message) => `🟢 ${message}`;
+const warningMessage = (message) => `🟠 ${message}`;
 const formatCount = (count, singular, plural = `${singular}s`) => `${count} ${count === 1 ? singular : plural}`;
-const CUSTOM_EMOJI_NAMES = {
-  owner: '479369king',
-  bugHunter: '697211bughunter',
-  france: '4535franceyees',
-  moderation: '829331discordstaff',
-  verified: '3763verifiedgreen',
-  support: '269160support',
-};
-
-function themedEmoji(client, key, fallback) {
-  const customEmoji = findThemedEmoji(client, key);
-  return customEmoji?.toString() ?? fallback;
-}
-
-function findThemedEmoji(client, key) {
-  const name = CUSTOM_EMOJI_NAMES[key];
-  return name && client?.emojis?.cache?.find((emoji) => emoji.name === name);
-}
 const REQUIRED_COMMAND_PERMISSIONS = {
   warn: PermissionFlagsBits.ModerateMembers,
   warnings: PermissionFlagsBits.ModerateMembers,
@@ -138,18 +119,18 @@ const REQUIRED_COMMAND_PERMISSIONS = {
   nickname: PermissionFlagsBits.ManageNicknames,
   vocal: PermissionFlagsBits.ManageGuild,
   logs: PermissionFlagsBits.ManageGuild,
-  securitas: PermissionFlagsBits.ManageGuild,
+  securite: PermissionFlagsBits.ManageGuild,
+  filter: PermissionFlagsBits.ManageMessages,
   gestion: PermissionFlagsBits.ManageGuild,
   verification: PermissionFlagsBits.ManageGuild,
   tickets: PermissionFlagsBits.ManageGuild,
+  roles: PermissionFlagsBits.ManageGuild,
 };
 
 const HELP_GROUPS = [
   {
     name: 'Modération des membres',
     value: 'members',
-    emoji: 'moderation',
-    fallbackEmoji: '🛡️',
     description: 'Avertissements, suspensions, exclusions et bannissements.',
     permission: 'La permission requise est indiquée par Discord pour chaque commande.',
     commands: ['warn', 'warnings', 'unwarn', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'nickname'],
@@ -157,8 +138,6 @@ const HELP_GROUPS = [
   {
     name: 'Salons et outils',
     value: 'channels',
-    emoji: 'bugHunter',
-    fallbackEmoji: '🧰',
     description: 'Nettoyage, contrôle des salons, sondages et informations.',
     permission: 'Gérer les messages, les salons ou le serveur selon la commande.',
     commands: ['purge', 'slowmode', 'lock', 'unlock', 'dire', 'logs', 'vocal', 'serverinfo', 'support', 'userinfo', 'avatar', 'sondage'],
@@ -166,83 +145,44 @@ const HELP_GROUPS = [
   {
     name: 'Configuration et tickets',
     value: 'configuration',
-    emoji: 'verified',
-    fallbackEmoji: '⚙️',
     description: 'Panneaux de sécurité et de gestion, CAPTCHA et système de tickets.',
     permission: 'Gérer le serveur pour configurer ; les tickets dépendent de leur configuration.',
-    commands: ['securitas', 'gestion', 'verification', 'tickets'],
+    commands: ['securite', 'filter', 'gestion', 'verification', 'tickets', 'roles'],
   },
 ];
 
-function helpPanelEmbed(groupValue = 'home', client) {
+function helpPanelEmbed(groupValue = 'home') {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setFooter({ text: 'Commandes slash • Les permissions dépendent de l’action' });
   if (groupValue === 'home') {
     return embed
-      .setTitle('📚 Centre de commandes')
+      .setTitle('Centre de commandes')
       .setDescription('Choisissez une catégorie pour voir les commandes correspondantes. Les actions habituelles restent accessibles directement avec `/commande`.')
       .addFields(HELP_GROUPS.map((group) => ({
-        name: `${themedEmoji(client, group.emoji, group.fallbackEmoji)} ${group.name}`,
-        value: `${group.description}\n${group.commands.map((commandName) => `/${commandName}`).join(' · ')}`,
+        name: group.name,
+        value: `${group.description}\nCommandes : ${group.commands.map((commandName) => `/${commandName}`).join(' · ')}`,
       })));
   }
   const group = HELP_GROUPS.find((item) => item.value === groupValue);
   if (!group) return null;
   return embed
-    .setTitle(`📚 ${themedEmoji(client, group.emoji, group.fallbackEmoji)} ${group.name}`)
+    .setTitle(group.name)
     .setDescription(group.commands.map((commandName) => {
       const command = commands.find((entry) => entry.name === commandName);
-      const icon = {
-        warn: themedEmoji(client, 'moderation', '⚠️'),
-        warnings: themedEmoji(client, 'moderation', '📋'),
-        unwarn: themedEmoji(client, 'moderation', '↩️'),
-        clearwarnings: themedEmoji(client, 'moderation', '🧹'),
-        timeout: themedEmoji(client, 'moderation', '⏳'),
-        untimeout: themedEmoji(client, 'moderation', '✅'),
-        kick: themedEmoji(client, 'moderation', '👢'),
-        ban: themedEmoji(client, 'moderation', '🔨'),
-        unban: themedEmoji(client, 'moderation', '🔓'),
-        nickname: themedEmoji(client, 'moderation', '✏️'),
-        purge: themedEmoji(client, 'moderation', '🧹'),
-        slowmode: themedEmoji(client, 'moderation', '🐢'),
-        lock: themedEmoji(client, 'moderation', '🔒'),
-        unlock: themedEmoji(client, 'moderation', '🔓'),
-        dire: themedEmoji(client, 'moderation', '📢'),
-        logs: themedEmoji(client, 'bugHunter', '🐛'),
-        vocal: '🔊',
-        serverinfo: themedEmoji(client, 'owner', '🏠'),
-        support: themedEmoji(client, 'support', '🎧'),
-        userinfo: '👤',
-        avatar: '🖼️',
-        sondage: '📊',
-        securitas: themedEmoji(client, 'moderation', '🛡️'),
-        gestion: '⚙️',
-        verification: themedEmoji(client, 'verified', '✅'),
-        tickets: themedEmoji(client, 'support', '🎟️'),
-      }[commandName];
-      return `${icon ? `${icon} ` : ''}**/${commandName}** — ${command.description}`;
+      return `**/${commandName}** — ${command.description}`;
     }).join('\n'))
-    .addFields({ name: 'Permissions', value: group.permission });
+    .addFields({ name: 'Permissions et utilisation', value: group.permission });
 }
 
-function helpPanelComponents(client) {
+function helpPanelComponents() {
   return [new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId('help:category')
       .setPlaceholder('Afficher les commandes par catégorie')
       .addOptions(
         { label: 'Toutes les catégories', value: 'home' },
-        ...HELP_GROUPS.map(({ name, value, emoji, fallbackEmoji }) => {
-          const customEmoji = findThemedEmoji(client, emoji);
-          return {
-            label: name,
-            value,
-            emoji: customEmoji
-              ? { id: customEmoji.id, name: customEmoji.name, animated: customEmoji.animated }
-              : fallbackEmoji,
-          };
-        }),
+        ...HELP_GROUPS.map(({ name, value }) => ({ label: name, value })),
       ),
   )];
 }
@@ -252,12 +192,12 @@ async function log(interaction, settings, action, target, details) {
   const channel = interaction.guild.channels.cache.get(settings.logChannelId);
   if (!channel) return;
   const embed = new EmbedBuilder()
-    .setTitle(`${themedEmoji(interaction.client, 'moderation', ACTION_ICONS[action] ?? '🛡️')} ${ACTION_LABELS[action] ?? action}`)
+    .setTitle(ACTION_LABELS[action] ?? action)
     .setColor(COLORS[action] ?? 0x99aab5)
     .addFields(
-      { name: '👤 Membre concerné', value: target ? `<@${target.id}> (${target.tag ?? target.id})` : 'Aucun', inline: true },
-      { name: '🛡️ Action effectuée par', value: `<@${interaction.user.id}>`, inline: true },
-      ...(details ? [{ name: '📝 Motif et précisions', value: details.slice(0, 1000) }] : []),
+      { name: 'Membre concerné', value: target ? `<@${target.id}> (${target.tag ?? target.id})` : 'Aucun', inline: true },
+      { name: 'Action effectuée par', value: `<@${interaction.user.id}>`, inline: true },
+      ...(details ? [{ name: 'Motif et précisions', value: details.slice(0, 1000) }] : []),
     )
     .setTimestamp();
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((err) => console.error('[moderation-bot] Échec de publication dans le journal :', err.message));
@@ -278,7 +218,7 @@ export async function logCommandUsage(interaction) {
   const commandPath = [interaction.commandName, subcommandGroup, subcommand].filter(Boolean).join(' ');
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`${themedEmoji(interaction.client, 'moderation', '📜')} Utilisation d’une commande`)
+    .setTitle('Utilisation d’une commande')
     .addFields(
       { name: 'Commande', value: `\`/${commandPath}\``, inline: true },
       { name: 'Membre', value: `<@${interaction.user.id}> (\`${interaction.user.tag ?? interaction.user.username ?? interaction.user.id}\`)`, inline: true },
@@ -339,7 +279,7 @@ function ticketPanelEmbed(settings, client) {
     .setTitle(settings.ticketPanelTitle)
     .setDescription(settings.ticketPanelDescription)
     .setColor(0x5865f2)
-    .setFooter({ text: `${themedEmoji(client, 'support', '🎧')} Assistance privée • Votre demande sera visible par vous et l’équipe de support` });
+    .setFooter({ text: 'Assistance privée • Votre demande sera visible par vous et l’équipe de support' });
 }
 
 function announcementPreview(settings, guild, event) {
@@ -374,31 +314,51 @@ function ticketCloseComponents(disabled = false) {
   )];
 }
 
-const configStatus = (enabled) => enabled ? '🟢 Activé' : '⚫ Désactivé';
+const configStatus = (enabled) => enabled ? '🟢 Activé' : '🔴 Désactivé';
 const configuredChannel = (id) => id ? `<#${id}>` : '*Non configuré*';
 const configuredRole = (id) => id ? `<@&${id}>` : '*Aucun rôle*';
 
-function warBoubouEmbed(settings, client) {
-  const { antiRaid, antiSpam, antiLink } = settings.security;
+function warBoubouEmbed(settings) {
+  const { antiRaid, antiSpam, antiLink, incidents, wordFilter } = settings.security;
+  const recentIncidents = incidents.filter((incident) => Date.now() - incident.at < 24 * 60 * 60 * 1000);
+  const incidentCount = (type) => recentIncidents.filter((incident) => incident.type === type).length;
+  const activeRaid = settings.security.raidProtection?.restoreAt > Date.now();
+  const enabledCount = [antiRaid.enabled, antiSpam.enabled, antiLink.enabled, wordFilter.length > 0].filter(Boolean).length;
+  const alert = activeRaid
+    ? { label: '🔴 CRITIQUE — protection anti-raid active', color: 0xed4245 }
+    : recentIncidents.length >= 5
+      ? { label: '🟠 ÉLEVÉ — activité inhabituelle détectée', color: 0xe67e22 }
+      : recentIncidents.length > 0 || enabledCount < 4
+        ? { label: '🟡 À SURVEILLER — protections ou incidents à vérifier', color: 0xfee75c }
+        : { label: '🟢 NORMAL — aucune alerte récente', color: 0x57f287 };
+  const lastIncident = recentIncidents.at(-1);
+  const incidentSummary = recentIncidents.length
+    ? `24 h : **${recentIncidents.length}** • liens **${incidentCount('link')}** • mots **${incidentCount('filter')}** • spam **${incidentCount('spam')}** • raids **${incidentCount('raid')}**${lastIncident ? `\nDernier incident : <t:${Math.floor(lastIncident.at / 1000)}:R>` : ''}`
+    : 'Aucun incident détecté au cours des dernières 24 heures.';
   return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`${themedEmoji(client, 'moderation', '🛡️')} Securitas`)
-    .setDescription('Tableau unique des protections automatiques du serveur. Les changements sont enregistrés immédiatement.')
+    .setColor(alert.color)
+    .setTitle('Sécurité Protocol')
+    .setDescription(`${alert.label}\n\nVue d’ensemble des protections et de l’activité de sécurité. Les statistiques couvrent les dernières 24 heures.`)
     .addFields(
+      { name: 'Statistiques de sécurité', value: incidentSummary },
       {
-        name: '🚨 Anti-raid',
+        name: 'Anti-raid',
         value: `${configStatus(antiRaid.enabled)} • ${antiRaid.joinThreshold} arrivées en ${antiRaid.intervalSeconds} s • protection ${antiRaid.protectionMinutes} min`,
       },
       {
-        name: '💬 Anti-spam',
+        name: 'Anti-spam',
         value: `${configStatus(antiSpam.enabled)} • ${antiSpam.maxMessages} messages en ${antiSpam.intervalSeconds} s • suspension ${antiSpam.timeoutMinutes} min`,
       },
       {
-        name: '🔗 Anti-liens',
+        name: 'Anti-liens',
         value: `${configStatus(antiLink.enabled)} • ${antiLink.mode === 'all' ? 'Tous les liens' : 'Invitations Discord'} • rôle exempté : ${configuredRole(antiLink.exemptRoleId)}`,
       },
+      {
+        name: 'Filtre de mots',
+        value: `${wordFilter.length ? '🟢 Activé' : '🟡 Aucun mot configuré'} • ${wordFilter.length} mot(s) • gérer avec \`/filter\``,
+      },
     )
-    .setFooter({ text: 'Réglages réservés aux membres ayant Gérer le serveur' })
+    .setFooter({ text: 'Réglages réservés aux modérateurs • Historique des incidents limité à 30 jours' })
     .setTimestamp();
 }
 
@@ -429,21 +389,21 @@ function warBoubouComponents(settings) {
 }
 
 const MANAGEMENT_PANEL_OPTIONS = [
-  { label: '🐛 Journal de modération', value: 'logs' },
+  { label: 'Journal de modération', value: 'logs' },
   { label: 'Bienvenue', value: 'welcome' },
   { label: 'Départ', value: 'leave' },
-  { label: '🇫🇷 Langue', value: 'language' },
+  { label: 'Langue', value: 'language' },
 ];
 
-function managementDashboardEmbed(client) {
+function managementDashboardEmbed() {
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('⚙️ Gestion du serveur')
+    .setTitle('Gestion du serveur')
     .setDescription('Choisissez le réglage à modifier. Les changements sont enregistrés immédiatement.')
     .addFields(
-      { name: '👋 Annonces', value: 'Bienvenue et départ', inline: true },
-      { name: `${themedEmoji(client, 'france', '🇫🇷')} Notifications`, value: 'Langue des notifications automatiques', inline: true },
-      { name: `${themedEmoji(client, 'bugHunter', '🐛')} Journal`, value: 'Salon des journaux et alertes de modération', inline: true },
+      { name: 'Annonces', value: 'Bienvenue et départ', inline: true },
+      { name: 'Notifications', value: 'Langue des notifications automatiques', inline: true },
+      { name: 'Journal', value: 'Salon des journaux et alertes de modération', inline: true },
     )
     .setFooter({ text: 'Panneau privé • Réservé aux membres ayant Gérer le serveur' });
 }
@@ -461,7 +421,7 @@ function isManagementPanel(key) {
   return MANAGEMENT_PANEL_OPTIONS.some((option) => option.value === key);
 }
 
-function configEmbed(settings, key, client) {
+function configEmbed(settings, key) {
   const { security } = settings;
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
@@ -469,11 +429,11 @@ function configEmbed(settings, key, client) {
     .setTimestamp();
 
   if (key === 'language') {
-    embed.setTitle(`${themedEmoji(client, 'france', '🌐')} Langue des notifications`)
+    embed.setTitle('Langue des notifications')
       .setDescription('Choisissez la langue utilisée par les notifications automatiques du bot.')
-      .addFields({ name: 'Langue actuelle', value: security.language === 'en' ? '**🇬🇧 English**' : '**🇫🇷 Français**' });
+      .addFields({ name: 'Langue actuelle', value: security.language === 'en' ? '**English**' : '**Français**' });
   } else if (key === 'antiLink') {
-    embed.setTitle('🔗 Filtre anti-liens')
+    embed.setTitle('Filtre anti-liens')
       .setDescription('Contrôlez les liens autorisés, choisissez le mode et, si nécessaire, sélectionnez un rôle exempté.')
       .addFields(
         { name: 'Protection', value: configStatus(security.antiLink.enabled), inline: true },
@@ -481,7 +441,7 @@ function configEmbed(settings, key, client) {
         { name: 'Rôle exempté', value: configuredRole(security.antiLink.exemptRoleId), inline: true },
       );
   } else if (key === 'antiSpam') {
-    embed.setTitle('💬 Protection anti-spam')
+    embed.setTitle('Protection anti-spam')
       .setDescription('Définissez quand les messages répétés déclenchent une intervention.')
       .addFields(
         { name: 'Protection', value: configStatus(security.antiSpam.enabled), inline: true },
@@ -489,7 +449,7 @@ function configEmbed(settings, key, client) {
         { name: 'Suspension', value: `**${security.antiSpam.timeoutMinutes} min**`, inline: true },
       );
   } else if (key === 'antiRaid') {
-    embed.setTitle('🚨 Protection anti-raid')
+    embed.setTitle('Protection anti-raid')
       .setDescription('Définissez le seuil d’arrivée massive et la durée de la vérification renforcée.')
       .addFields(
         { name: 'Protection', value: configStatus(security.antiRaid.enabled), inline: true },
@@ -497,7 +457,7 @@ function configEmbed(settings, key, client) {
         { name: 'Durée', value: `**${security.antiRaid.protectionMinutes} min**`, inline: true },
       );
   } else if (key === 'verification') {
-    embed.setTitle(`${themedEmoji(client, 'verified', '✅')} Vérification des nouveaux membres`)
+    embed.setTitle('Vérification des nouveaux membres')
       .setDescription('Un membre doit réussir un CAPTCHA visuel privé pour recevoir le rôle vérifié. Configurez ce rôle et publiez le panneau dans un salon accessible aux nouveaux membres.')
       .addFields(
         { name: 'Protection', value: configStatus(security.verification.enabled), inline: true },
@@ -505,25 +465,25 @@ function configEmbed(settings, key, client) {
         { name: 'Étape requise sur le serveur', value: 'Limitez l’accès aux salons aux membres portant le rôle vérifié. Laissez le salon du panneau visible pour @everyone.' },
       );
   } else if (key === 'logs') {
-    embed.setTitle(`${themedEmoji(client, 'bugHunter', '🐛')} Journal de modération`)
+    embed.setTitle('Journal de modération')
       .setDescription('Les sanctions et les actions de modération seront publiées dans le salon choisi.')
       .addFields({ name: 'Salon actuel', value: configuredChannel(settings.logChannelId) });
   } else if (key === 'welcome' || key === 'leave') {
     const announcement = settings[key];
-    embed.setTitle(key === 'welcome' ? '👋 Annonce de bienvenue' : '🚪 Annonce de départ')
+    embed.setTitle(key === 'welcome' ? 'Annonce de bienvenue' : 'Annonce de départ')
       .setDescription(key === 'welcome'
         ? 'Personnalisez le message envoyé lorsqu’un membre rejoint le serveur.'
         : 'Personnalisez le message envoyé lorsqu’un membre quitte le serveur.')
       .addFields(
         { name: 'État', value: configStatus(announcement.enabled), inline: true },
         { name: 'Salon', value: configuredChannel(announcement.channelId), inline: true },
-        ...(key === 'welcome' ? [{ name: 'Mention', value: announcement.ping ? '🟢 Activée' : '⚫ Désactivée', inline: true }] : []),
+        ...(key === 'welcome' ? [{ name: 'Mention', value: announcement.ping ? '🟢 Activée' : '🔴 Désactivée', inline: true }] : []),
         { name: 'Texte', value: `> ${announcement.message.replaceAll('\n', '\n> ').slice(0, 900)}` },
-        { name: 'Image', value: announcement.imagePath ? '🟢 Image personnalisée enregistrée' : '⚫ Aucune image' },
+        { name: 'Image', value: announcement.imagePath ? '🟢 Image personnalisée enregistrée' : 'Aucune image' },
         { name: 'Variables disponibles', value: '`{user}` · `{username}` · `{server}` · `{memberCount}`' },
       );
   } else if (key === 'tickets') {
-    embed.setTitle('🎧 Support • Configuration des tickets')
+    embed.setTitle('Support • Configuration des tickets')
       .setDescription('Configurez l’emplacement des demandes, l’équipe responsable et le texte du panneau public.')
       .addFields(
         { name: 'Catégorie', value: configuredChannel(settings.ticketCategoryId), inline: true },
@@ -550,8 +510,8 @@ function configComponents(settings, key) {
   const rows = [];
   if (key === 'language') {
     rows.push(new ActionRowBuilder().addComponents(
-      configButton('config:set:language:fr', '🇫🇷 Français', settings.security.language === 'fr' ? ButtonStyle.Success : ButtonStyle.Secondary),
-      configButton('config:set:language:en', '🇬🇧 English', settings.security.language === 'en' ? ButtonStyle.Success : ButtonStyle.Secondary),
+      configButton('config:set:language:fr', 'Français', settings.security.language === 'fr' ? ButtonStyle.Success : ButtonStyle.Secondary),
+      configButton('config:set:language:en', 'English', settings.security.language === 'en' ? ButtonStyle.Success : ButtonStyle.Secondary),
     ));
   } else if (key === 'antiLink') {
     rows.push(new ActionRowBuilder().addComponents(
@@ -762,6 +722,140 @@ async function canManageTicket(interaction, settings, ownerId) {
   return member?.roles.cache.has(settings.ticketSupportRoleId) ?? false;
 }
 
+async function getAssignableRole(guild, role) {
+  const botMember = guild.members.me ?? await guild.members.fetchMe();
+  if (
+    role.id === guild.id
+    || role.managed
+    || !botMember.permissions.has(PermissionFlagsBits.ManageRoles)
+    || role.position >= botMember.roles.highest.position
+  ) {
+    return null;
+  }
+  return role;
+}
+
+async function handleSelfRoleCommand(interaction, settings) {
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'ajouter') {
+    const role = interaction.options.getRole('role');
+    const label = interaction.options.getString('nom').trim();
+    if (!label) {
+      await interaction.reply({ content: 'Le nom du bouton ne peut pas être vide.', ephemeral: true });
+      return;
+    }
+    if (!(await getAssignableRole(interaction.guild, role))) {
+      await interaction.reply({ content: 'Choisissez un rôle non géré, placé sous le rôle le plus élevé du bot. Le bot doit aussi avoir **Gérer les rôles**.', ephemeral: true });
+      return;
+    }
+    settings.selfRoles ??= [];
+    if (settings.selfRoles.some((entry) => entry.roleId === role.id)) {
+      await interaction.reply({ content: 'Ce rôle figure déjà dans le panneau. Utilisez `/roles retirer` pour le retirer avant de le remplacer.', ephemeral: true });
+      return;
+    }
+    if (settings.selfRoles.length >= 25) {
+      await interaction.reply({ content: 'Le panneau peut contenir au maximum 25 rôles. Retirez-en un avant d’en ajouter un autre.', ephemeral: true });
+      return;
+    }
+    settings.selfRoles.push({ roleId: role.id, label });
+    await save();
+    await interaction.reply({ content: `Le rôle ${role} a été ajouté au panneau sous le nom « ${label} ». Publiez le panneau avec \`/roles publier\` pour le rendre accessible aux membres.`, ephemeral: true, allowedMentions: { parse: [] } });
+    return;
+  }
+
+  if (subcommand === 'retirer') {
+    const role = interaction.options.getRole('role');
+    const index = (settings.selfRoles ?? []).findIndex((entry) => entry.roleId === role.id);
+    if (index < 0) {
+      await interaction.reply({ content: 'Ce rôle ne figure pas dans le panneau.', ephemeral: true });
+      return;
+    }
+    settings.selfRoles.splice(index, 1);
+    await save();
+    await interaction.reply({ content: `Le rôle ${role} a été retiré du panneau.`, ephemeral: true, allowedMentions: { parse: [] } });
+    return;
+  }
+
+  if (subcommand === 'publier') {
+    const channel = interaction.channel;
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      await interaction.reply({ content: 'Le panneau doit être publié depuis un salon textuel.', ephemeral: true });
+      return;
+    }
+    if (!settings.selfRoles?.length) {
+      await interaction.reply({ content: 'Ajoutez au moins un rôle avec `/roles ajouter` avant de publier le panneau.', ephemeral: true });
+      return;
+    }
+    const buttons = [];
+    for (const entry of settings.selfRoles) {
+      const role = interaction.guild.roles.cache.get(entry.roleId)
+        ?? await interaction.guild.roles.fetch(entry.roleId);
+      if (!role || !(await getAssignableRole(interaction.guild, role))) {
+        await interaction.reply({ content: `Le rôle configuré <@&${entry.roleId}> n’est plus attribuable. Retirez-le avec \`/roles retirer\` puis réessayez.`, ephemeral: true });
+        return;
+      }
+      buttons.push(new ButtonBuilder()
+        .setCustomId(`self-role:${role.id}`)
+        .setLabel(entry.label)
+        .setStyle(ButtonStyle.Secondary));
+    }
+    const rows = [];
+    for (let index = 0; index < buttons.length; index += 5) {
+      rows.push(new ActionRowBuilder().addComponents(buttons.slice(index, index + 5)));
+    }
+    await channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('Choisissez vos rôles')
+        .setDescription('Cliquez sur un bouton pour obtenir le rôle correspondant. Cliquez de nouveau pour le retirer.')],
+      components: rows,
+      allowedMentions: { parse: [] },
+    });
+    await interaction.reply({ content: `Le panneau de rôles a été publié dans <#${channel.id}>.`, ephemeral: true });
+  }
+}
+
+const selfRoleChanges = new Set();
+
+export async function handleSelfRoleInteraction(interaction) {
+  if (!interaction.isButton() || !interaction.customId.startsWith('self-role:')) return false;
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: 'Les rôles à choisir sont disponibles uniquement sur un serveur Discord.', ephemeral: true });
+    return true;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const roleId = interaction.customId.slice('self-role:'.length);
+  const changeKey = `${interaction.guildId}:${interaction.user.id}:${roleId}`;
+  if (selfRoleChanges.has(changeKey)) {
+    await interaction.editReply({ content: 'Cette modification est déjà en cours. Réessayez dans quelques secondes.' });
+    return true;
+  }
+  selfRoleChanges.add(changeKey);
+  try {
+    const settings = await getGuild(interaction.guildId);
+    if (!settings.selfRoles?.some((entry) => entry.roleId === roleId)) {
+      await interaction.editReply({ content: 'Ce rôle n’est plus disponible. Demandez à un administrateur de publier le panneau à jour.' });
+      return true;
+    }
+    const role = interaction.guild.roles.cache.get(roleId) ?? await interaction.guild.roles.fetch(roleId);
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    if (!role || !(await getAssignableRole(interaction.guild, role))) {
+      await interaction.editReply({ content: 'Ce rôle ne peut pas être attribué actuellement. Prévenez un administrateur du serveur.' });
+      return true;
+    }
+    if (member.roles.cache.has(role.id)) {
+      await member.roles.remove(role, 'Rôle choisi depuis le panneau public');
+      await interaction.editReply({ content: `Le rôle **${role.name}** vous a été retiré.` });
+    } else {
+      await member.roles.add(role, 'Rôle choisi depuis le panneau public');
+      await interaction.editReply({ content: `Le rôle **${role.name}** vous a été attribué.` });
+    }
+  } finally {
+    selfRoleChanges.delete(changeKey);
+  }
+  return true;
+}
+
 export async function handleCommand(interaction) {
   const name = interaction.commandName;
   const requiredPermission = REQUIRED_COMMAND_PERMISSIONS[name];
@@ -771,8 +865,8 @@ export async function handleCommand(interaction) {
   }
   if (name === 'aide') {
     await interaction.reply({
-      embeds: [helpPanelEmbed('home', interaction.client)],
-      components: helpPanelComponents(interaction.client),
+      embeds: [helpPanelEmbed('home')],
+      components: helpPanelComponents(),
       ephemeral: true,
     });
     return;
@@ -780,25 +874,21 @@ export async function handleCommand(interaction) {
 
   if (name === 'support') {
     const supportUrl = 'https://discord.gg/FXbeGGyVn';
-    const supportEmoji = themedEmoji(interaction.client, 'support', '🎧');
-    const moderationEmoji = themedEmoji(interaction.client, 'moderation', '🛡️');
-    const verifiedEmoji = themedEmoji(interaction.client, 'verified', '✅');
-    const ownerEmoji = themedEmoji(interaction.client, 'owner', '👑');
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle(`${moderationEmoji} FadeHost | Modération et protection`)
-      .setDescription(`${verifiedEmoji} Un bot conçu pour protéger et simplifier la gestion de votre serveur Discord.`)
+      .setTitle('FadeHost | Modération et protection')
+      .setDescription('Un bot conçu pour protéger et simplifier la gestion de votre serveur Discord.')
       .addFields(
         {
-          name: `${moderationEmoji} Fonctionnalités`,
+          name: 'Fonctionnalités',
           value: '• Protection contre les raids, le spam et les liens indésirables\n• Outils de modération et journal des actions\n• Vérification des nouveaux membres et gestion des tickets',
         },
         {
-          name: `${supportEmoji} Assistance`,
+          name: 'Assistance',
           value: 'Vous rencontrez un bogue ou avez besoin d’aide ? Rejoignez notre serveur officiel et décrivez le problème rencontré. Pensez à préciser la commande utilisée et le message d’erreur affiché.',
         },
         {
-          name: `${ownerEmoji} Créateurs`,
+          name: 'Créateurs',
           value: 'hi_o0fh et tixeemtv',
         },
       )
@@ -821,10 +911,61 @@ export async function handleCommand(interaction) {
   const settings = await getGuild(interaction.guildId);
   const getReason = () => interaction.options.getString('reason') || 'Aucun motif n’a été communiqué.';
 
-  if (name === 'securitas') {
+  if (name === 'securite') {
     await interaction.reply({
-      embeds: [warBoubouEmbed(settings, interaction.client)],
+      embeds: [warBoubouEmbed(settings)],
       components: warBoubouComponents(settings),
+      ephemeral: true,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+  if (name === 'filter') {
+    const subcommand = interaction.options.getSubcommand();
+    const word = interaction.options.getString('mot')?.normalize('NFC').trim().toLocaleLowerCase('fr-FR');
+    if (subcommand === 'liste') {
+      const description = settings.security.wordFilter.length
+        ? settings.security.wordFilter.map((entry) => `• ${entry}`).join('\n')
+        : 'Aucun mot n’est actuellement filtré.';
+      await interaction.reply({
+        embeds: [new EmbedBuilder()
+          .setColor(settings.security.wordFilter.length ? 0x5865f2 : 0xfee75c)
+          .setTitle('Filtre de mots')
+          .setDescription(description.slice(0, 4000))
+          .setFooter({ text: `${settings.security.wordFilter.length} mot(s) configuré(s)` })],
+        ephemeral: true,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+    if (!word || /\s/u.test(word)) {
+      await interaction.reply({ content: 'Saisissez un seul mot de 1 à 50 caractères, sans espace.', ephemeral: true });
+      return;
+    }
+    if (subcommand === 'ajouter') {
+      if (settings.security.wordFilter.includes(word)) {
+        await interaction.reply({ content: `🟡 **${word}** figure déjà dans le filtre.`, ephemeral: true });
+        return;
+      }
+      if (settings.security.wordFilter.length >= 100) {
+        await interaction.reply({ content: 'Le filtre contient déjà 100 mots. Retirez-en un avant d’en ajouter un autre.', ephemeral: true });
+        return;
+      }
+      settings.security.wordFilter.push(word);
+      settings.security.wordFilter.sort((left, right) => left.localeCompare(right, 'fr'));
+    } else {
+      const index = settings.security.wordFilter.indexOf(word);
+      if (index === -1) {
+        await interaction.reply({ content: `🟡 **${word}** ne figure pas dans le filtre.`, ephemeral: true });
+        return;
+      }
+      settings.security.wordFilter.splice(index, 1);
+    }
+    await save();
+    await interaction.reply({
+      content: subcommand === 'ajouter'
+        ? `🟢 **${word}** sera filtré. Les messages qui contiennent ce mot seront supprimés automatiquement.`
+        : `🟢 **${word}** a été retiré du filtre.`,
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
@@ -832,11 +973,15 @@ export async function handleCommand(interaction) {
   }
   if (name === 'verification') {
     await interaction.reply({
-      embeds: [configEmbed(settings, 'verification', interaction.client)],
+      embeds: [configEmbed(settings, 'verification')],
       components: configComponents(settings, 'verification'),
       ephemeral: true,
       allowedMentions: { parse: [] },
     });
+    return;
+  }
+  if (name === 'roles') {
+    await handleSelfRoleCommand(interaction, settings);
     return;
   }
   if (name === 'serverinfo') {
@@ -845,17 +990,17 @@ export async function handleCommand(interaction) {
     const voiceChannels = guild.channels.cache.filter((channel) => channel.type === ChannelType.GuildVoice).size;
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle(`🏠 ${guild.name}`)
+      .setTitle(guild.name)
       .addFields(
-        { name: '👥 Membres', value: String(guild.memberCount ?? 'Inconnu'), inline: true },
-        { name: '💬 Salons textuels', value: String(textChannels), inline: true },
-        { name: '🔊 Salons vocaux', value: String(voiceChannels), inline: true },
-        { name: '📅 Créé le', value: guild.createdAt ? `<t:${Math.floor(guild.createdAt.getTime() / 1000)}:D>` : 'Inconnu', inline: true },
-        { name: '🆔 Identifiant', value: guild.id, inline: true },
+        { name: 'Membres', value: String(guild.memberCount ?? 'Inconnu'), inline: true },
+        { name: 'Salons textuels', value: String(textChannels), inline: true },
+        { name: 'Salons vocaux', value: String(voiceChannels), inline: true },
+        { name: 'Créé le', value: guild.createdAt ? `<t:${Math.floor(guild.createdAt.getTime() / 1000)}:D>` : 'Inconnu', inline: true },
+        { name: 'Identifiant', value: guild.id, inline: true },
       );
     if (guild.ownerId) {
       embed.addFields({
-        name: `${themedEmoji(interaction.client, 'owner', '👑')} Propriétaire`,
+        name: 'Propriétaire',
         value: `<@${guild.ownerId}>`,
         inline: true,
       });
@@ -870,20 +1015,20 @@ export async function handleCommand(interaction) {
     const member = await fetchMember(interaction.guild, target.id);
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle(`👤 ${target.tag ?? target.username}`)
+      .setTitle(target.tag ?? target.username)
       .setThumbnail(target.displayAvatarURL())
       .addFields(
-        { name: '🆔 Identifiant', value: target.id, inline: true },
-        { name: '📅 Compte créé', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:D>`, inline: true },
-        { name: '🤖 Compte automatisé', value: target.bot ? 'Oui' : 'Non', inline: true },
-        { name: '📥 Arrivée sur le serveur', value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:D>` : 'Non membre ou date inconnue', inline: true },
+        { name: 'Identifiant', value: target.id, inline: true },
+        { name: 'Compte créé', value: `<t:${Math.floor(target.createdTimestamp / 1000)}:D>`, inline: true },
+        { name: 'Compte automatisé', value: target.bot ? 'Oui' : 'Non', inline: true },
+        { name: 'Arrivée sur le serveur', value: member?.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:D>` : 'Non membre ou date inconnue', inline: true },
       );
     if (member) {
       const roles = member.roles.cache
         .filter((role) => role.id !== interaction.guildId)
         .map((role) => `<@&${role.id}>`)
         .slice(0, 10);
-      embed.addFields({ name: '🎭 Rôles', value: roles.length ? roles.join(', ') : 'Aucun rôle attribué' });
+      embed.addFields({ name: 'Rôles', value: roles.length ? roles.join(', ') : 'Aucun rôle attribué' });
     }
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     return;
@@ -893,7 +1038,7 @@ export async function handleCommand(interaction) {
     const avatarUrl = target.displayAvatarURL({ size: 1024 });
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle(`🖼️ Avatar de ${target.tag ?? target.username}`)
+      .setTitle(`Avatar de ${target.tag ?? target.username}`)
       .setImage(avatarUrl)
       .setURL(avatarUrl);
     await interaction.reply({ embeds: [embed], allowedMentions: { parse: [] } });
@@ -949,14 +1094,14 @@ export async function handleCommand(interaction) {
       await save();
       if (previousImage && previousImage !== imagePath) await removeMemberEventImage(previousImage);
       await interaction.editReply({
-        embeds: [configEmbed(settings, key, interaction.client)],
+        embeds: [configEmbed(settings, key)],
         components: configPanelComponents(settings, key),
         allowedMentions: { parse: [] },
       });
       return;
     }
     await interaction.reply({
-      embeds: [key ? configEmbed(settings, key, interaction.client) : managementDashboardEmbed(interaction.client)],
+      embeds: [key ? configEmbed(settings, key) : managementDashboardEmbed()],
       components: key ? configPanelComponents(settings, key) : [managementDashboardSelect()],
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -965,7 +1110,7 @@ export async function handleCommand(interaction) {
   }
   if (name === 'tickets') {
     await interaction.reply({
-      embeds: [configEmbed(settings, 'tickets', interaction.client)],
+      embeds: [configEmbed(settings, 'tickets')],
       components: configPanelComponents(settings, 'tickets'),
       ephemeral: true,
       allowedMentions: { parse: [] },
@@ -983,7 +1128,7 @@ export async function handleCommand(interaction) {
       await interaction.reply({
         content: disconnected
           ? successMessage('Le bot a quitté le salon vocal. Il ne s’y reconnectera pas tant que vous n’aurez pas relancé `/vocal rejoindre`.')
-            : 'ℹ️ Le bot n’était connecté à aucun salon vocal et aucune reconnexion n’était programmée.',
+            : '🔵 Le bot n’était connecté à aucun salon vocal et aucune reconnexion automatique n’était programmée. Utilisez `/vocal rejoindre` pour choisir un salon.',
         ephemeral: true,
       });
       return;
@@ -1027,7 +1172,7 @@ export async function handleCommand(interaction) {
       return;
     }
     const embed = new EmbedBuilder()
-      .setTitle(`${themedEmoji(interaction.client, 'bugHunter', '📋')} Dernières entrées du journal`)
+      .setTitle('Dernières entrées du journal')
       .setColor(0x5865f2)
       .setDescription(entries.map((message) => {
         const detail = message.embeds[0]
@@ -1067,7 +1212,7 @@ export async function handleCommand(interaction) {
     const cutoff = Date.now() - 13 * 24 * 3600 * 1000;
     const candidates = [...fetched.values()].filter((m) => m.createdTimestamp > cutoff && (!from || m.author.id === from.id)).slice(0, amount);
     if (candidates.length === 0) {
-      await interaction.editReply({ content: `ℹ️ Aucun message récent ne correspond aux critères de suppression dans ce salon.` });
+      await interaction.editReply({ content: '🔵 Aucun message récent ne correspond aux critères de suppression. Les messages de plus de 14 jours ne peuvent pas être supprimés en masse ; vérifiez aussi le membre choisi et la quantité demandée.' });
       return;
     }
     const deleted = await channel.bulkDelete(candidates, true);
@@ -1117,7 +1262,7 @@ export async function handleCommand(interaction) {
       await interaction.deferReply({ ephemeral: true });
       const bans = await interaction.guild.bans.fetch();
       if (bans.size === 0) {
-        await interaction.editReply({ content: 'ℹ️ Aucun compte n’est actuellement banni de ce serveur.' });
+        await interaction.editReply({ content: '🔵 Aucun compte n’est actuellement banni de ce serveur.' });
         return;
       }
       const pageSize = 20;
@@ -1125,7 +1270,7 @@ export async function handleCommand(interaction) {
       const page = Math.min(interaction.options.getInteger('page') ?? 1, pageCount);
       const entries = [...bans.values()].slice((page - 1) * pageSize, page * pageSize);
       const embed = new EmbedBuilder()
-        .setTitle(`${themedEmoji(interaction.client, 'moderation', '🔨')} Comptes bannis`)
+        .setTitle('Comptes bannis')
         .setColor(0xed4245)
         .setDescription(entries.map((ban) => `• **${ban.user.username}** — \`${ban.user.id}\`${ban.reason ? ` — ${ban.reason.slice(0, 180)}` : ''}`).join('\n').slice(0, 4000))
         .setFooter({ text: `Page ${page}/${pageCount} · ${formatCount(bans.size, 'compte', 'comptes')}` });
@@ -1172,7 +1317,7 @@ export async function handleCommand(interaction) {
   if (name === 'warnings') {
     const list = settings.warnings[target.id] ?? [];
     if (list.length === 0) {
-      await interaction.reply({ content: `ℹ️ Aucun avertissement n’est consigné pour ${target.tag}.`, ephemeral: true });
+      await interaction.reply({ content: `🔵 Aucun avertissement n’est consigné pour ${target.tag}.`, ephemeral: true });
       return;
     }
     const pageSize = 10;
@@ -1180,7 +1325,7 @@ export async function handleCommand(interaction) {
     const page = interaction.options.getInteger('page') ?? pageCount;
     if (!Number.isSafeInteger(page) || page < 1 || page > pageCount) {
       await interaction.reply({
-        content: `⚠️ Cette page n’existe pas. ${target.tag} a ${formatCount(list.length, 'avertissement', 'avertissements')} sur ${formatCount(pageCount, 'page')}.`,
+        content: `🟠 La page demandée n’existe pas. ${target.tag} a ${formatCount(list.length, 'avertissement', 'avertissements')}, répartis sur ${formatCount(pageCount, 'page')}. Choisissez une page entre 1 et ${pageCount}.`,
         ephemeral: true,
       });
       return;
@@ -1188,7 +1333,7 @@ export async function handleCommand(interaction) {
     const startIndex = (page - 1) * pageSize;
     const embed = new EmbedBuilder()
       .setColor(0xfee75c)
-      .setTitle(`${themedEmoji(interaction.client, 'moderation', '⚠️')} Avertissements de ${target.tag}`)
+      .setTitle(`Avertissements de ${target.tag}`)
       .setDescription(`Page ${page}/${pageCount} • ${formatCount(list.length, 'avertissement', 'avertissements')} au total`)
       .addFields(list.slice(startIndex, startIndex + pageSize).map((warning, index) => ({
         name: `N° ${startIndex + index + 1}`,
@@ -1202,7 +1347,7 @@ export async function handleCommand(interaction) {
     const list = settings.warnings[target.id] ?? [];
     const number = interaction.options.getInteger('number', true);
     if (!Number.isSafeInteger(number) || number < 1 || number > list.length) {
-      await interaction.reply({ content: `⚠️ Cet avertissement n’existe pas. ${target.tag} a actuellement ${formatCount(list.length, 'avertissement', 'avertissements')}.`, ephemeral: true });
+      await interaction.reply({ content: `🟠 L’avertissement n° ${number} n’existe pas. ${target.tag} a actuellement ${formatCount(list.length, 'avertissement', 'avertissements')}. Consultez \`/warnings\` pour voir les numéros disponibles.`, ephemeral: true });
       return;
     }
     const [removed] = list.splice(number - 1, 1);
@@ -1217,7 +1362,7 @@ export async function handleCommand(interaction) {
   if (name === 'clearwarnings') {
     const list = settings.warnings[target.id] ?? [];
     if (list.length === 0) {
-      await interaction.reply({ content: `ℹ️ Aucun avertissement n’est consigné pour ${target.tag}.`, ephemeral: true });
+      await interaction.reply({ content: `🔵 Aucun avertissement n’est consigné pour ${target.tag}.`, ephemeral: true });
       return;
     }
     delete settings.warnings[target.id];
@@ -1322,14 +1467,14 @@ export async function handleHelpInteraction(interaction) {
     return true;
   }
   const [groupValue] = interaction.values;
-  const embed = helpPanelEmbed(groupValue, interaction.client);
+  const embed = helpPanelEmbed(groupValue);
   if (!embed) {
     await interaction.reply({ content: 'Cette catégorie de commandes n’existe pas.', ephemeral: true });
     return true;
   }
   await interaction.update({
     embeds: [embed],
-    components: helpPanelComponents(interaction.client),
+    components: helpPanelComponents(),
     allowedMentions: { parse: [] },
   });
   return true;
@@ -1400,9 +1545,9 @@ export async function handleTicketInteraction(interaction) {
   const result = await createTicket(interaction.guild, interaction.user, interaction.client, settings, subject, details);
   const response = {
     created: successMessage(`Votre ticket a été créé : <#${result.channel.id}>.`),
-    existing: `ℹ️ Vous avez déjà un ticket ouvert : <#${result.channel.id}>.`,
-    pending: '⏳ La création de votre ticket est déjà en cours. Veuillez patienter quelques secondes.',
-    unconfigured: warningMessage('Le système de tickets n’est pas configuré. Un administrateur doit utiliser `/tickets`.'),
+    existing: `🔵 Vous avez déjà un ticket ouvert : <#${result.channel.id}>. Utilisez ce salon pour poursuivre votre demande.`,
+    pending: '🔵 La création de votre ticket est déjà en cours. Attendez quelques secondes avant de réessayer.',
+    unconfigured: warningMessage('Le système de tickets n’est pas encore configuré. Un administrateur doit lancer `/tickets`, choisir les paramètres nécessaires et publier le panneau.'),
   };
   await interaction.editReply({ content: response[result.status] });
   return true;
@@ -1446,7 +1591,7 @@ export async function handleConfigInteraction(interaction) {
 
   if (interaction.customId === 'securitas:dashboard') {
     await interaction.reply({
-      content: 'Ce tableau a été remplacé. Utilisez `/securitas` pour les protections, `/gestion` pour les réglages du serveur, ou `/verification` et `/tickets` pour leurs panneaux dédiés.',
+      content: 'Ce tableau a été remplacé. Utilisez `/securite` pour les protections et les alertes, `/gestion` pour les réglages du serveur, ou `/verification` et `/tickets` pour leurs panneaux dédiés.',
       ephemeral: true,
     });
     return true;
@@ -1455,7 +1600,7 @@ export async function handleConfigInteraction(interaction) {
   const settings = await getGuild(interaction.guildId);
   const isWarBoubou = interaction.customId.startsWith('warboubou:');
   const updateConfig = (key) => interaction.update({
-    embeds: [isWarBoubou ? warBoubouEmbed(settings, interaction.client) : configEmbed(settings, key, interaction.client)],
+    embeds: [isWarBoubou ? warBoubouEmbed(settings) : configEmbed(settings, key)],
     components: configPanelComponents(settings, isWarBoubou ? 'security' : key),
     allowedMentions: { parse: [] },
   });
@@ -1488,7 +1633,7 @@ export async function handleConfigInteraction(interaction) {
         return true;
       }
       await interaction.update({
-        embeds: [configEmbed(settings, key, interaction.client)],
+        embeds: [configEmbed(settings, key)],
         components: configPanelComponents(settings, key),
         allowedMentions: { parse: [] },
       });

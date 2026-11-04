@@ -151,7 +151,7 @@ function makeStartResponse(guildId, userId) {
   challenges.set(challengeKey(guildId, userId), { code, expiresAt: now + challengeLifetime, attempts: 0 });
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('✅ Vérification humaine')
+    .setTitle('Vérification humaine')
     .setDescription('Recopiez les **6 caractères** de l’image dans le formulaire. Le code expire dans 5 minutes.');
   return {
     embeds: [embed],

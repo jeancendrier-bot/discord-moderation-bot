@@ -73,6 +73,13 @@ function hasBlockedLink(content, mode) {
   return false;
 }
 
+function recordIncident(settings, type) {
+  const incidents = settings.security.incidents;
+  incidents.push({ type, at: Date.now() });
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  settings.security.incidents = incidents.filter((incident) => incident.at >= cutoff).slice(-500);
+}
+
 async function restoreVerificationLevel(guild, settings, reason) {
   const protection = settings.security.raidProtection;
   if (!protection) return;
@@ -100,9 +107,32 @@ export async function handleMessageCreate(message) {
 
   if (security.antiLink.enabled && !isExempt(settings, member) && hasBlockedLink(message.content, security.antiLink.mode)) {
     const deleted = await message.delete().then(() => true).catch(() => false);
+    recordIncident(settings, 'link');
+    await save();
     if (deleted) await message.author.send(`**${message.guild.name}**\n${words.linkDm}`).catch(() => {});
     await sendLog(message.guild, settings, words.linkLog(message.author.id, message.channelId, deleted));
     return;
+  }
+
+  if (security.wordFilter.length && !member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+    const content = message.content.normalize('NFC');
+    const blockedWord = security.wordFilter.find((word) => new RegExp(
+      `(?<![\\p{L}\\p{N}_])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`,
+      'iu',
+    ).test(content));
+    if (blockedWord) {
+      const deleted = await message.delete().then(() => true).catch(() => false);
+      recordIncident(settings, 'filter');
+      await save();
+      await sendLog(
+        message.guild,
+        settings,
+        deleted
+          ? `Le filtre de mots a supprimé un message de <@${message.author.id}> dans <#${message.channelId}>.`
+          : `Le filtre de mots a détecté un message de <@${message.author.id}> dans <#${message.channelId}>, mais le bot n’a pas pu le supprimer.`,
+      );
+      return;
+    }
   }
 
   if (!security.antiSpam.enabled || member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
@@ -126,6 +156,8 @@ export async function handleMessageCreate(message) {
   }
   if (recent.length < security.antiSpam.maxMessages) return;
 
+  recordIncident(settings, 'spam');
+  await save();
   spamCooldowns.set(key, now + 60_000);
   spamWindows.delete(key);
   const botMember = message.guild.members.me;
@@ -162,7 +194,7 @@ function scheduleRaidRestore(guild, settings) {
       console.error(`[moderation-bot] ${words.restoreError}`, error.message);
       await sendLog(guild, settings, words.restoreError);
       await notifySupport(guild.client, {
-        title: '🚨 Échec de protection anti-raid',
+        title: 'Échec de protection anti-raid',
         description: `Impossible de restaurer le niveau de vérification sur **${guild.name}**. La protection sera réessayée dans une minute.`,
         originGuildId: guild.id,
       });
@@ -208,6 +240,7 @@ export async function handleGuildMemberAdd(member) {
     if (now - (activeProtection.lastExtendedAt ?? 0) < extensionCooldown) return;
     activeProtection.restoreAt = now + antiRaid.protectionMinutes * 60_000;
     activeProtection.lastExtendedAt = now;
+    recordIncident(settings, 'raid');
     await save();
     scheduleRaidRestore(member.guild, settings);
     await sendLog(member.guild, settings, messagesFor(settings).raidRefreshLog(joins.length, antiRaid.protectionMinutes));
@@ -219,13 +252,14 @@ export async function handleGuildMemberAdd(member) {
   const restoreAt = now + antiRaid.protectionMinutes * 60_000;
   settings.security.raidProtection = { originalVerificationLevel, restoreAt, lastExtendedAt: now };
   try {
+    recordIncident(settings, 'raid');
     await save();
     await member.guild.setVerificationLevel(GuildVerificationLevel.VeryHigh, 'Arrivées massives détectées par la protection anti-raid');
     scheduleRaidRestore(member.guild, settings);
     const words = messagesFor(settings);
     await sendLog(member.guild, settings, words.raidLog(joins.length, antiRaid.protectionMinutes));
     await notifySupport(member.guild.client, {
-      title: '🚨 Alerte anti-raid',
+      title: 'Alerte anti-raid',
       description: `Arrivées massives détectées sur **${member.guild.name}** (${joins.length} nouveaux membres en ${antiRaid.intervalSeconds} s). Le niveau de vérification a été renforcé pendant ${antiRaid.protectionMinutes} minutes.`,
       color: 0xe67e22,
       originGuildId: member.guild.id,
@@ -235,7 +269,7 @@ export async function handleGuildMemberAdd(member) {
     await save().catch(() => {});
     console.error('[moderation-bot] Activation de la protection anti-raid impossible :', error.message);
     await notifySupport(member.guild.client, {
-      title: '⚠️ Protection anti-raid non appliquée',
+      title: 'Protection anti-raid non appliquée',
       description: `Une arrivée massive a été détectée sur **${member.guild.name}**, mais le bot n’a pas pu appliquer le niveau de vérification renforcé.`,
       color: 0xe67e22,
       originGuildId: member.guild.id,
@@ -255,7 +289,7 @@ export async function restoreRaidProtection(client) {
       } catch (error) {
         console.error('[moderation-bot] Restauration de la protection anti-raid impossible :', error.message);
         await notifySupport(guild.client, {
-          title: '🚨 Échec de protection anti-raid',
+          title: 'Échec de protection anti-raid',
           description: `Impossible de restaurer le niveau de vérification sur **${guild.name}** après le redémarrage du bot. Une nouvelle tentative sera effectuée dans une minute.`,
           originGuildId: guild.id,
         });

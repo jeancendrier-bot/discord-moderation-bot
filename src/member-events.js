@@ -193,7 +193,7 @@ export async function handleBotStatus(client, state, reason = '') {
       let shouldRememberVersion = false;
       if (previousVersion !== botVersion) {
         const updateNotice = await sendSupportAlert(client, {
-          title: '📦 Mise à jour du bot',
+          title: 'Mise à jour du bot',
           description: previousVersion
             ? `Le bot support est maintenant en version **${botVersion}** (version précédente : **${previousVersion}**).`
             : `Le bot support est maintenant en version **${botVersion}**. C’est la première version suivie par le système d’alertes.`,
