@@ -154,7 +154,7 @@ describe('slash command definitions', () => {
 
     const [embed] = interaction.response.embeds;
     assert.equal(interaction.response.ephemeral, true);
-    assert.equal(embed.data.title, 'FadeHost | Modération et protection');
+    assert.equal(embed.data.title, 'Modération et protection');
     assert.match(embed.data.description, /protéger et simplifier la gestion/);
     assert.match(embed.data.fields[0].value, /raids, le spam et les liens indésirables/);
     assert.match(embed.data.fields[1].value, /bogue ou avez besoin d’aide/);

@@ -876,7 +876,7 @@ export async function handleCommand(interaction) {
     const supportUrl = 'https://discord.gg/FXbeGGyVn';
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle('FadeHost | Modération et protection')
+      .setTitle('Modération et protection')
       .setDescription('Un bot conçu pour protéger et simplifier la gestion de votre serveur Discord.')
       .addFields(
         {
