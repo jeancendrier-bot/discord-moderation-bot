@@ -879,7 +879,7 @@ async function handleAnnouncementCommand(interaction, settings, key) {
     return;
   }
   if (attachment || clearImage) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply();
     const previousImage = settings[key].imagePath;
     const imagePath = attachment
       ? await saveMemberEventImage(interaction.guildId, key, attachment)
@@ -897,7 +897,6 @@ async function handleAnnouncementCommand(interaction, settings, key) {
   await interaction.reply({
     embeds: [configEmbed(settings, key)],
     components: configPanelComponents(settings, key),
-    ephemeral: true,
     allowedMentions: { parse: [] },
   });
 }
@@ -913,7 +912,6 @@ export async function handleCommand(interaction) {
     await interaction.reply({
       embeds: [helpPanelEmbed()],
       components: helpPanelComponents(),
-      ephemeral: true,
     });
     return;
   }
@@ -960,7 +958,6 @@ export async function handleCommand(interaction) {
   if (name === 'protocol') {
     await interaction.reply({
       embeds: [protocolEmbed(settings)],
-      ephemeral: true,
       allowedMentions: { parse: [] },
     });
     return;
@@ -980,7 +977,6 @@ export async function handleCommand(interaction) {
     await interaction.reply({
       embeds: [configDashboardEmbed()],
       components: configDashboardComponents(),
-      ephemeral: true,
       allowedMentions: { parse: [] },
     });
     return;

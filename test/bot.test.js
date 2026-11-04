@@ -99,7 +99,7 @@ describe('slash command definitions', () => {
     assert.deepEqual(commands.find((command) => command.name === 'support').options, []);
     const helpInteraction = { commandName: 'aide', reply: async (message) => { helpInteraction.response = message; } };
     await handleCommand(helpInteraction);
-    assert.equal(helpInteraction.response.ephemeral, true);
+    assert.notEqual(helpInteraction.response.ephemeral, true);
     assert.equal(helpInteraction.response.components[0].components[0].data.custom_id, 'help:command:0');
     assert.equal(helpInteraction.response.components[0].components[0].options.length, 12);
     assert.match(helpInteraction.response.embeds[0].data.title, /Toutes les commandes/);
@@ -299,7 +299,7 @@ describe('slash command definitions', () => {
     assert.deepEqual(report.allowedMentions, { parse: [] });
   });
 
-  it('prevents another user from interacting with a private help panel', async () => {
+  it('prevents another user from interacting with a public help panel', async () => {
     const interaction = {
       isStringSelectMenu: () => true,
       isButton: () => false,
@@ -525,7 +525,7 @@ describe('slash command definitions', () => {
     };
 
     await handleCommand(interaction);
-    assert.equal(interaction.response.ephemeral, true);
+    assert.notEqual(interaction.response.ephemeral, true);
     assert.equal(interaction.response.embeds[0].data.title, 'Sécurité Protocol');
     assert.equal(interaction.response.components, undefined);
 
@@ -538,6 +538,7 @@ describe('slash command definitions', () => {
     };
     await handleCommand(config);
     assert.equal(config.response.embeds[0].data.title, 'Configuration du serveur');
+    assert.notEqual(config.response.ephemeral, true);
     assert.equal(config.response.components.flatMap((row) => row.components).length, 11);
     const ownerId = '123456789012345650';
     const welcomeButton = {
@@ -976,7 +977,7 @@ describe('moderation commands', () => {
     };
 
     await handleCommand(interaction);
-    assert.equal(replied.ephemeral, true);
+    assert.notEqual(replied.ephemeral, true);
     assert.match(replied.embeds[0].data.title, /commandes/i);
     assert.match(replied.embeds[0].data.description, /\/protocol/);
     const protocolPage = Math.floor(commands.findIndex((command) => command.name === 'protocol') / 12);
@@ -997,7 +998,7 @@ describe('moderation commands', () => {
   });
 
   describe('per-command interactive configuration', () => {
-    it('rejects configuration controls used by anyone other than the panel owner', async () => {
+    it('rejects controls on a public configuration panel when used by anyone other than its owner', async () => {
       const guildId = '123456789012345680';
       const settings = await getGuild(guildId);
       assert.equal(settings.security.antiSpam.enabled, false);
@@ -1575,6 +1576,7 @@ describe('moderation commands', () => {
     };
 
     await handleCommand(interaction);
+    assert.notEqual(interaction.response.ephemeral, true);
     const welcomePanel = {
       isButton: () => true,
       isModalSubmit: () => false,
@@ -1672,7 +1674,7 @@ describe('moderation commands', () => {
     };
 
     await handleCommand(interaction);
-    assert.equal(interaction.response.ephemeral, true);
+    assert.notEqual(interaction.response.ephemeral, true);
     const ownerId = '123456789012345687';
     const openTickets = {
       isButton: () => true,
